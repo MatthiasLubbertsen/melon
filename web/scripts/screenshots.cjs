@@ -106,6 +106,30 @@ async function main() {
     await context.close()
   }
 
+  // A teacher whose Zermelo token cannot list people gets a code field instead
+  // of name search. The demo teacher can list people, so the session answer is
+  // rewritten in the browser to show that variant.
+  for (const theme of ['light', 'dark']) {
+    console.log(`teacher without name search, ${theme}`)
+    const { context, page, shot } = await session({ viewport: phone, theme })
+    await page.route('**/api/app/session', async (route) => {
+      const res = await route.fetch()
+      const body = await res.json()
+      for (const a of body.data?.accounts ?? []) if (a.role === 'employee') a.canViewOthers = false
+      await route.fulfill({ response: res, json: body })
+    })
+    await page.goto(BASE)
+    await page.getByRole('button', { name: 'Bekijk de demo' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.getByRole('button', { name: 'Wissel van account' }).click()
+    await page.getByRole('menuitem', { name: /Noor Bakker/ }).click()
+    const field = page.getByLabel('Rooster opzoeken met een code (16528, dh)')
+    await field.waitFor()
+    await field.fill('16528')
+    await shot(`16-teacher-code-lookup-${theme}`)
+    await context.close()
+  }
+
   console.log('desktop')
   const { context, page, shot } = await session({ viewport: desktop, theme: 'light' })
   await page.goto(BASE)
