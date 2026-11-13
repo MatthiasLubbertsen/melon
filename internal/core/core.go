@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/matthiaslubbertsen/melon/internal/secret"
 	"github.com/matthiaslubbertsen/melon/internal/store"
@@ -582,6 +583,9 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 		}
 	}
 	sort.Strings(l.Changes)
+	if ap.TeacherChanged {
+		l.ChangeNote = nameTeachers(l.ChangeNote, teachers)
+	}
 	switch {
 	case ap.Cancelled:
 		l.Status = "cancelled"
@@ -593,6 +597,41 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 		l.UpdatedAt = &t
 	}
 	return l
+}
+
+// nameTeachers swaps teacher codes in Zermelo's change text ("was dkr") for
+// the names we know. Only whole words count, and callers only use it when the
+// teacher is what changed, so a code that is also a Dutch word is left alone
+// everywhere else.
+func nameTeachers(note string, teachers map[string]string) string {
+	if note == "" || len(teachers) == 0 {
+		return note
+	}
+	var b strings.Builder
+	word := func(w string) {
+		if name := teachers[strings.ToLower(w)]; name != "" {
+			w = name
+		}
+		b.WriteString(w)
+	}
+	start := -1
+	for i, r := range note {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if start < 0 {
+				start = i
+			}
+			continue
+		}
+		if start >= 0 {
+			word(note[start:i])
+			start = -1
+		}
+		b.WriteRune(r)
+	}
+	if start >= 0 {
+		word(note[start:])
+	}
+	return b.String()
 }
 
 func dedupe(in []string) []string {

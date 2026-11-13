@@ -79,3 +79,27 @@ func TestChangeStatus(t *testing.T) {
 		t.Errorf("cancelled must win: %+v", l)
 	}
 }
+
+func TestNameTeachers(t *testing.T) {
+	names := map[string]string{"dkr": "Mevrouw Dekker", "was": "Meneer Was"}
+	for in, want := range map[string]string{
+		"De docent is gewijzigd (was dkr).": "De docent is gewijzigd (Meneer Was Mevrouw Dekker).",
+		"DKR -> ozt":                        "Mevrouw Dekker -> ozt",
+		"dkrx en xdkr":                      "dkrx en xdkr",
+		"":                                  "",
+	} {
+		if got := nameTeachers(in, names); got != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+	// Only a changed teacher makes the note worth rewriting.
+	loc := time.UTC
+	ap := zermelo.Appointment{ChangeDescription: "Het lokaal was 112.", LocationChanged: true}
+	if got := toLesson(ap, loc, "nl", nil, names).ChangeNote; got != "Het lokaal was 112." {
+		t.Errorf("room change rewritten: %q", got)
+	}
+	ap = zermelo.Appointment{ChangeDescription: "Nu ozt, eerst dkr.", TeacherChanged: true}
+	if got := toLesson(ap, loc, "nl", nil, names).ChangeNote; got != "Nu ozt, eerst Mevrouw Dekker." {
+		t.Errorf("teacher change: %q", got)
+	}
+}
