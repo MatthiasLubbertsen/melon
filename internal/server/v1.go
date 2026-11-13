@@ -194,6 +194,39 @@ func (s *Server) handleResetSubject(w http.ResponseWriter, r *http.Request, p co
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleTeachers(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	list, err := s.Core.Teachers(r.Context(), p, r.PathValue("account"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeData(w, list)
+}
+
+func (s *Server) handleSetTeacher(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	code := strings.ToLower(r.PathValue("code"))
+	if err := s.Core.SetTeacher(r.Context(), p, r.PathValue("account"), code, body.Name); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeData(w, core.TeacherEntry{Code: code, Name: strings.TrimSpace(body.Name), Custom: true})
+}
+
+func (s *Server) handleResetTeacher(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	if err := s.Core.ResetTeacher(r.Context(), p, r.PathValue("account"), r.PathValue("code")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSuffix(r.PathValue("token"), ".ics")
 	ics, err := s.Core.CalendarFeed(r.Context(), token, lang(r))

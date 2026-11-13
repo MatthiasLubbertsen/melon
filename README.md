@@ -77,7 +77,7 @@ Add `https://melon.example.com/mcp` as a remote MCP server. Clients that support
 OAuth get a consent screen where you choose the accounts to share. Clients that
 do not can send an API key as a Bearer token. Tools: `list_accounts`,
 `get_schedule`, `search_people`, `get_announcements`, `list_subjects`,
-`rename_subject`.
+`rename_subject`, `list_teachers`, `rename_teacher`.
 
 ## Design decisions
 

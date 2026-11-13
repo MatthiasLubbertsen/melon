@@ -95,6 +95,21 @@ type Subject struct {
 	Name string `json:"name"`
 }
 
+// Teacher is a teacher code with the name to show for it. Name equals Code
+// when nobody has told Melon who it is.
+type Teacher struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+}
+
+type TeacherEntry struct {
+	Code string `json:"code"`
+	Name string `json:"name"`
+	// Custom is true when the account set this name itself; otherwise it
+	// comes from the school's staff list.
+	Custom bool `json:"custom"`
+}
+
 type Period struct {
 	From int `json:"from"`
 	To   int `json:"to"`
@@ -109,7 +124,7 @@ type Lesson struct {
 	Type       string     `json:"type"`
 	Title      string     `json:"title"`
 	Subjects   []Subject  `json:"subjects"`
-	Teachers   []string   `json:"teachers"`
+	Teachers   []Teacher  `json:"teachers"`
 	Locations  []string   `json:"locations"`
 	Groups     []string   `json:"groups"`
 	Status     string     `json:"status"`  // scheduled | changed | cancelled
@@ -450,6 +465,10 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 	if err != nil {
 		return Schedule{}, err
 	}
+	teachers, _, err := s.teacherNames(ctx, a, token)
+	if err != nil {
+		return Schedule{}, err
+	}
 
 	// One upstream request per ISO week, in parallel.
 	var weeks []string
@@ -493,7 +512,7 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 			if start.Before(q.From) || !start.Before(end) {
 				continue
 			}
-			out.Lessons = append(out.Lessons, toLesson(ap, s.Loc, q.Lang, overrides))
+			out.Lessons = append(out.Lessons, toLesson(ap, s.Loc, q.Lang, overrides, teachers))
 		}
 	}
 	sort.SliceStable(out.Lessons, func(i, j int) bool {
@@ -507,7 +526,7 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 	return out, nil
 }
 
-func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides map[string]string) Lesson {
+func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides, teachers map[string]string) Lesson {
 	start := time.Unix(ap.Start, 0).In(loc)
 	l := Lesson{
 		ID:         fmt.Sprint(ap.ID),
@@ -516,7 +535,7 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 		End:        time.Unix(ap.End, 0).In(loc),
 		Type:       strings.ToLower(ap.Type),
 		Subjects:   []Subject{},
-		Teachers:   dedupe(ap.Teachers),
+		Teachers:   []Teacher{},
 		Locations:  dedupe(ap.Locations),
 		Groups:     dedupe(ap.Groups),
 		Status:     "scheduled",
@@ -535,6 +554,13 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 		if ap.EndSlot != nil {
 			l.Period.To = *ap.EndSlot
 		}
+	}
+	for _, code := range dedupe(ap.Teachers) {
+		name := teachers[strings.ToLower(code)]
+		if name == "" {
+			name = code
+		}
+		l.Teachers = append(l.Teachers, Teacher{Code: code, Name: name})
 	}
 	var names []string
 	for _, code := range dedupe(ap.Subjects) {
@@ -612,6 +638,73 @@ func (s *Service) Announcements(ctx context.Context, p Principal, accountID stri
 		out = append(out, Announcement{ID: fmt.Sprint(r.ID), Title: strings.TrimSpace(r.Title), Text: strings.TrimSpace(r.Text), Start: time.Unix(r.Start, 0).In(s.Loc), End: time.Unix(r.End, 0).In(s.Loc)})
 	}
 	return out, res, nil
+}
+
+// ---- teachers ----
+
+// teacherNames maps lowercase teacher codes to names: the school's staff list
+// when the account can see it, with the account's own names on top. custom
+// holds the codes the account named itself.
+func (s *Service) teacherNames(ctx context.Context, a store.Account, token string) (names map[string]string, custom map[string]string, err error) {
+	custom, err = s.Store.TeacherNames(ctx, a.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	names = map[string]string{}
+	if a.Wide {
+		// Best effort: a schedule without full names beats no schedule.
+		if users, err := s.directory(ctx, a, token); err == nil {
+			for _, u := range users {
+				if u.IsEmployee && u.Name() != "" {
+					names[strings.ToLower(u.Code)] = u.Name()
+				}
+			}
+		}
+	}
+	for code, name := range custom {
+		names[code] = name
+	}
+	return names, custom, nil
+}
+
+// Teachers lists every teacher code Melon has a name for on this account.
+func (s *Service) Teachers(ctx context.Context, p Principal, accountID string) ([]TeacherEntry, error) {
+	a, token, err := s.account(ctx, p, accountID)
+	if err != nil {
+		return nil, err
+	}
+	names, custom, err := s.teacherNames(ctx, a, token)
+	if err != nil {
+		return nil, err
+	}
+	out := []TeacherEntry{}
+	for code, name := range names {
+		_, isCustom := custom[code]
+		out = append(out, TeacherEntry{Code: code, Name: name, Custom: isCustom})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out, nil
+}
+
+func (s *Service) SetTeacher(ctx context.Context, p Principal, accountID, code, name string) error {
+	a, _, err := s.account(ctx, p, accountID)
+	if err != nil {
+		return err
+	}
+	code = strings.ToLower(strings.TrimSpace(code))
+	name = strings.TrimSpace(name)
+	if code == "" || len(code) > 32 || name == "" || len(name) > 80 {
+		return Errf(http.StatusBadRequest, "invalid_request", "A teacher needs a code (max 32 characters) and a name (max 80).")
+	}
+	return s.Store.SetTeacherName(ctx, a.ID, code, name)
+}
+
+func (s *Service) ResetTeacher(ctx context.Context, p Principal, accountID, code string) error {
+	a, _, err := s.account(ctx, p, accountID)
+	if err != nil {
+		return err
+	}
+	return s.Store.DeleteTeacherName(ctx, a.ID, strings.ToLower(strings.TrimSpace(code)))
 }
 
 // ---- subjects ----

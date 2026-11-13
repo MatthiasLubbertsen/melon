@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS subject_overrides (
   code TEXT NOT NULL, name TEXT NOT NULL,
   PRIMARY KEY (account_id, code)
 );
+CREATE TABLE IF NOT EXISTS teacher_names (
+  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  code TEXT NOT NULL, name TEXT NOT NULL,
+  PRIMARY KEY (account_id, code)
+);
 CREATE TABLE IF NOT EXISTS api_keys (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -255,6 +260,35 @@ func (s *Store) SetSubjectOverride(ctx context.Context, accountID, code, name st
 
 func (s *Store) DeleteSubjectOverride(ctx context.Context, accountID, code string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM subject_overrides WHERE account_id = ? AND code = ?`, accountID, code)
+	return err
+}
+
+// ---- teacher names ----
+
+func (s *Store) TeacherNames(ctx context.Context, accountID string) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT code, name FROM teacher_names WHERE account_id = ?`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var c, n string
+		if err := rows.Scan(&c, &n); err != nil {
+			return nil, err
+		}
+		out[c] = n
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetTeacherName(ctx context.Context, accountID, code, name string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO teacher_names VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET name = excluded.name`, accountID, code, name)
+	return err
+}
+
+func (s *Store) DeleteTeacherName(ctx context.Context, accountID, code string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM teacher_names WHERE account_id = ? AND code = ?`, accountID, code)
 	return err
 }
 

@@ -72,6 +72,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/accounts/{account}/subjects", s.authed(s.handleSubjects))
 	mux.HandleFunc("PUT /api/v1/accounts/{account}/subjects/{code}", s.authed(s.handleSetSubject))
 	mux.HandleFunc("DELETE /api/v1/accounts/{account}/subjects/{code}", s.authed(s.handleResetSubject))
+	mux.HandleFunc("GET /api/v1/accounts/{account}/teachers", s.authed(s.handleTeachers))
+	mux.HandleFunc("PUT /api/v1/accounts/{account}/teachers/{code}", s.authed(s.handleSetTeacher))
+	mux.HandleFunc("DELETE /api/v1/accounts/{account}/teachers/{code}", s.authed(s.handleResetTeacher))
 	mux.HandleFunc("GET /api/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 		w.Write(s.OpenAPI)

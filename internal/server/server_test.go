@@ -127,6 +127,18 @@ func TestKeyScopeAndSessionOnly(t *testing.T) {
 	if code, _ := other.do("GET", "/api/v1/accounts/"+student+"/schedule", "", nil); code != 404 {
 		t.Fatalf("foreign account readable: got %d", code)
 	}
+	// A teacher name set on one account shows up in that account's schedule.
+	if code, _ := c.do("PUT", "/api/v1/accounts/"+student+"/teachers/MUL", "", map[string]any{"name": "Meneer Mulder"}); code != 200 {
+		t.Fatalf("name teacher: got %d", code)
+	}
+	_, body = c.do("GET", "/api/v1/accounts/"+student+"/schedule?week=2026-W46", "", nil)
+	raw, _ := json.Marshal(body)
+	if !strings.Contains(string(raw), `{"code":"mul","name":"Meneer Mulder"}`) {
+		t.Fatal("teacher name missing from schedule")
+	}
+	if code, _ := other.do("PUT", "/api/v1/accounts/"+student+"/teachers/mul", "", map[string]any{"name": "x"}); code != 404 {
+		t.Fatalf("foreign profile named a teacher: got %d", code)
+	}
 	// Students cannot look at other people.
 	if code, _ := c.do("GET", "/api/v1/accounts/"+student+"/schedule?person=100002", "", nil); code != 403 {
 		t.Fatalf("student viewed another person: %d", code)

@@ -392,16 +392,16 @@ function AppsSection() {
 
 // ---- Subjects ----
 
-function SubjectRow({ accountId, code, name, custom }: { accountId: string; code: string; name: string; custom: boolean }) {
+function NameRow({ accountId, kind, code, name, custom }: { accountId: string; kind: 'subject' | 'teacher'; code: string; name: string; custom: boolean }) {
   const { t } = useI18n()
   const qc = useQueryClient()
   const [value, setValue] = useState(name)
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: ['subjects', accountId] })
+    qc.invalidateQueries({ queryKey: [kind === 'subject' ? 'subjects' : 'teachers', accountId] })
     qc.invalidateQueries({ queryKey: ['schedule', accountId] })
   }
-  const save = useMutation({ mutationFn: () => api.setSubject(accountId, code, value), onSuccess: refresh })
-  const reset = useMutation({ mutationFn: () => api.resetSubject(accountId, code), onSuccess: refresh })
+  const save = useMutation({ mutationFn: () => (kind === 'subject' ? api.setSubject(accountId, code, value) : api.setTeacher(accountId, code, value)), onSuccess: refresh })
+  const reset = useMutation({ mutationFn: () => (kind === 'subject' ? api.resetSubject(accountId, code) : api.resetTeacher(accountId, code)), onSuccess: refresh })
   const dirty = value.trim() !== name && value.trim() !== ''
   return (
     <li>
@@ -413,7 +413,7 @@ function SubjectRow({ accountId, code, name, custom }: { accountId: string; code
         }}
       >
         <span className="w-14 shrink-0 truncate rounded-md bg-muted px-2 py-1 text-center font-mono text-xs">{code}</span>
-        <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label={`${t('subjectName')}: ${code}`} maxLength={80} className={cn('h-10 min-w-0 flex-1 text-base', custom && 'border-honeydew')} />
+        <Input value={value} onChange={(e) => setValue(e.target.value)} aria-label={`${t(kind === 'subject' ? 'subjectName' : 'teacherName')}: ${code}`} maxLength={80} className={cn('h-10 min-w-0 flex-1 text-base', custom && 'border-honeydew')} />
         {dirty ? (
           <Button type="submit" className="h-10 shrink-0" disabled={save.isPending}>
             {t('save')}
@@ -421,7 +421,7 @@ function SubjectRow({ accountId, code, name, custom }: { accountId: string; code
         ) : (
           custom && (
             <Button type="button" variant="outline" className="h-10 shrink-0" disabled={reset.isPending} onClick={() => reset.mutate()}>
-              {t('reset')}
+              {t(kind === 'subject' ? 'reset' : 'remove')}
             </Button>
           )
         )}
@@ -430,11 +430,9 @@ function SubjectRow({ accountId, code, name, custom }: { accountId: string; code
   )
 }
 
-function SubjectsTab() {
+function SubjectsSection({ accountId }: { accountId: string }) {
   const { t, lang } = useI18n()
-  const { active } = useSession()
   const qc = useQueryClient()
-  const [accountId, setAccountId] = useState(active!.id)
   const [filter, setFilter] = useState('')
   const [newCode, setNewCode] = useState('')
   const [newName, setNewName] = useState('')
@@ -456,7 +454,6 @@ function SubjectsTab() {
   }, [subjects.data, filter])
   return (
     <Section title={t('tabSubjects')} text={t('subjectsText')}>
-      <AccountPicker value={accountId} onChange={setAccountId} />
       <form
         className="flex items-end gap-2 rounded-xl border border-dashed p-3"
         onSubmit={(e) => {
@@ -482,10 +479,72 @@ function SubjectsTab() {
       </label>
       <ul className="grid gap-2">
         {shown.map((s) => (
-          <SubjectRow key={`${accountId}:${s.code}:${s.name}`} accountId={accountId} code={s.code} name={s.name} custom={s.custom} />
+          <NameRow key={`${accountId}:${s.code}:${s.name}`} accountId={accountId} kind="subject" code={s.code} name={s.name} custom={s.custom} />
         ))}
       </ul>
     </Section>
+  )
+}
+
+function TeachersSection({ accountId }: { accountId: string }) {
+  const { t } = useI18n()
+  const qc = useQueryClient()
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const teachers = useQuery({ queryKey: ['teachers', accountId], queryFn: () => api.teachers(accountId) })
+  const add = useMutation({
+    mutationFn: () => api.setTeacher(accountId, code.trim(), name.trim()),
+    onSuccess: () => {
+      setCode('')
+      setName('')
+      qc.invalidateQueries({ queryKey: ['teachers', accountId] })
+      qc.invalidateQueries({ queryKey: ['schedule', accountId] })
+    },
+  })
+  const shown = useMemo(() => {
+    const list = teachers.data ?? []
+    return [...list.filter((x) => x.custom), ...list.filter((x) => !x.custom)]
+  }, [teachers.data])
+  return (
+    <Section title={t('teachersTitle')} text={t('teachersText')}>
+      <form
+        className="flex items-end gap-2 rounded-xl border border-dashed p-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (code.trim() && name.trim()) add.mutate()
+        }}
+      >
+        <div className="grid w-24 shrink-0 gap-1.5">
+          <Label htmlFor="teacher-code">{t('subjectCode')}</Label>
+          <Input id="teacher-code" value={code} onChange={(e) => setCode(e.target.value)} placeholder="dkr" maxLength={32} autoCapitalize="none" className="h-10 font-mono text-base" />
+        </div>
+        <div className="grid min-w-0 flex-1 gap-1.5">
+          <Label htmlFor="teacher-name">{t('keyName')}</Label>
+          <Input id="teacher-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('teacherNamePlaceholder')} maxLength={80} className="h-10 text-base" />
+        </div>
+        <Button type="submit" className="h-10 shrink-0" disabled={!code.trim() || !name.trim() || add.isPending} aria-label={t('save')}>
+          <Plus />
+        </Button>
+      </form>
+      {teachers.data?.length === 0 && <p className="text-sm text-muted-foreground">{t('noTeachers')}</p>}
+      <ul className="grid gap-2">
+        {shown.map((x) => (
+          <NameRow key={`${accountId}:${x.code}:${x.name}`} accountId={accountId} kind="teacher" code={x.code} name={x.name} custom={x.custom} />
+        ))}
+      </ul>
+    </Section>
+  )
+}
+
+function NamesTab() {
+  const { active } = useSession()
+  const [accountId, setAccountId] = useState(active!.id)
+  return (
+    <>
+      <AccountPicker value={accountId} onChange={setAccountId} />
+      <TeachersSection key={`t-${accountId}`} accountId={accountId} />
+      <SubjectsSection key={`s-${accountId}`} accountId={accountId} />
+    </>
   )
 }
 
@@ -503,7 +562,7 @@ export function Settings() {
       <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
         <TabsList className="h-11 w-full">
           <TabsTrigger value="accounts">{t('tabAccounts')}</TabsTrigger>
-          <TabsTrigger value="subjects">{t('tabSubjects')}</TabsTrigger>
+          <TabsTrigger value="subjects">{t('tabNames')}</TabsTrigger>
           <TabsTrigger value="connect">{t('tabConnect')}</TabsTrigger>
           <TabsTrigger value="look">{t('tabLook')}</TabsTrigger>
         </TabsList>
@@ -511,7 +570,7 @@ export function Settings() {
           <AccountsTab />
         </TabsContent>
         <TabsContent value="subjects" className="grid gap-4">
-          <SubjectsTab />
+          <NamesTab />
         </TabsContent>
         <TabsContent value="connect" className="grid gap-4">
           <CalendarSection />

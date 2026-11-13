@@ -94,7 +94,11 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 			desc = append(desc, l.Note)
 		}
 		if len(l.Teachers) > 0 {
-			desc = append(desc, word("Docent: ", "Teacher: ")+strings.Join(l.Teachers, ", "))
+			var who []string
+			for _, t := range l.Teachers {
+				who = append(who, t.Name)
+			}
+			desc = append(desc, word("Docent: ", "Teacher: ")+strings.Join(who, ", "))
 		}
 		if len(l.Groups) > 0 {
 			desc = append(desc, word("Groep: ", "Group: ")+strings.Join(l.Groups, ", "))

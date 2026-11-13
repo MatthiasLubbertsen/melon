@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightLeft, Ban, Clock, DoorOpen, FileText, GraduationCap, MapPin, User, Users, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Chip } from '@/components/bits'
-import { api, type Lesson, type SubjectEntry } from '@/lib/api'
+import { api, type Lesson } from '@/lib/api'
 import { formatDay, formatTime } from '@/lib/dates'
 import { useI18n, type Key } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
@@ -61,7 +61,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
   const { t, locale } = useI18n()
   const cancelled = lesson.status === 'cancelled'
   const changed = lesson.status === 'changed'
-  const where = [lesson.locations.join(', '), lesson.teachers.join(', ')].filter(Boolean).join(' · ')
+  const where = [lesson.locations.join(', '), lesson.teachers.map((x) => x.name).join(', ')].filter(Boolean).join(' · ')
   return (
     <button
       type="button"
@@ -119,20 +119,29 @@ function Row({ icon: Icon, label, value }: { icon: typeof Clock; label: string; 
   )
 }
 
-/** Renaming a subject happens right where you see it. */
-function SubjectRename({ accountId, code, name }: { accountId: string; code: string; name: string }) {
-  const { t } = useI18n()
+/** Naming a subject or teacher happens right where you see it. */
+function NameEdit({ accountId, kind, code, name }: { accountId: string; kind: 'subject' | 'teacher'; code: string; name: string }) {
+  const { t, lang } = useI18n()
   const qc = useQueryClient()
-  const [value, setValue] = useState(name)
-  useEffect(() => setValue(name), [name])
+  // A teacher nobody named yet shows as its code; start that field empty.
+  const current = kind === 'teacher' && name === code ? '' : name
+  const [value, setValue] = useState(current)
+  useEffect(() => setValue(current), [current])
+  const list = kind === 'subject' ? 'subjects' : 'teachers'
+  const known = useQuery<{ code: string; custom: boolean }[]>({
+    queryKey: kind === 'subject' ? ['subjects', accountId, lang] : ['teachers', accountId],
+    queryFn: () => (kind === 'subject' ? api.subjects(accountId, lang) : api.teachers(accountId)),
+    staleTime: 60_000,
+  })
+  const custom = known.data?.find((e) => e.code === code.toLowerCase())?.custom
   const done = () => {
     qc.invalidateQueries({ queryKey: ['schedule', accountId] })
-    qc.invalidateQueries({ queryKey: ['subjects', accountId] })
+    qc.invalidateQueries({ queryKey: [list, accountId] })
     toast.success(t('saved'))
   }
-  const custom = qc.getQueryData<SubjectEntry[]>(['subjects', accountId])?.find((s) => s.code === code.toLowerCase())?.custom
-  const save = useMutation({ mutationFn: () => api.setSubject(accountId, code, value), onSuccess: done })
-  const reset = useMutation({ mutationFn: () => api.resetSubject(accountId, code), onSuccess: done })
+  const save = useMutation({ mutationFn: () => (kind === 'subject' ? api.setSubject(accountId, code, value) : api.setTeacher(accountId, code, value)), onSuccess: done })
+  const reset = useMutation({ mutationFn: () => (kind === 'subject' ? api.resetSubject(accountId, code) : api.resetTeacher(accountId, code)), onSuccess: done })
+  const id = `${kind}-${code}`
   return (
     <form
       className="grid gap-1.5"
@@ -141,15 +150,15 @@ function SubjectRename({ accountId, code, name }: { accountId: string; code: str
         if (value.trim()) save.mutate()
       }}
     >
-      <Label htmlFor={`subject-${code}`}>{t('subjectName')}</Label>
+      <Label htmlFor={id}>{t(kind === 'subject' ? 'subjectName' : 'teacherName')}</Label>
       <div className="flex gap-2">
-        <Input id={`subject-${code}`} value={value} onChange={(e) => setValue(e.target.value)} maxLength={80} className="h-11 text-base" />
-        <Button type="submit" className="h-11" disabled={!value.trim() || value.trim() === name || save.isPending}>
+        <Input id={id} value={value} onChange={(e) => setValue(e.target.value)} maxLength={80} placeholder={kind === 'teacher' ? t('teacherNamePlaceholder') : undefined} className="h-11 text-base" />
+        <Button type="submit" className="h-11" disabled={!value.trim() || value.trim() === current || save.isPending}>
           {t('save')}
         </Button>
         {custom && (
           <Button type="button" variant="outline" className="h-11" onClick={() => reset.mutate()} disabled={reset.isPending}>
-            {t('reset')}
+            {t(kind === 'subject' ? 'reset' : 'remove')}
           </Button>
         )}
       </div>
@@ -187,7 +196,7 @@ export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | 
             <div className="mt-2 divide-y">
               <Row icon={Clock} label={t('time')} value={`${formatTime(l.start, locale)} – ${formatTime(l.end, locale)}`} />
               <Row icon={MapPin} label={t('location')} value={l.locations.join(', ')} />
-              <Row icon={User} label={t('teacher')} value={l.teachers.join(', ')} />
+              <Row icon={User} label={t('teacher')} value={l.teachers.map((x) => (x.name === x.code ? x.code : `${x.name} (${x.code})`)).join(', ')} />
               <Row icon={Users} label={t('group')} value={l.groups.join(', ')} />
               <Row icon={FileText} label={t('note')} value={l.note} />
             </div>
@@ -197,10 +206,13 @@ export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | 
                 {t('online')}
               </Button>
             )}
-            {l.subjects.length > 0 && (
+            {l.subjects.length + l.teachers.length > 0 && (
               <div className="mt-4 grid gap-4 border-t pt-4">
                 {l.subjects.map((s) => (
-                  <SubjectRename key={s.code} accountId={accountId} code={s.code} name={s.name} />
+                  <NameEdit key={`s-${s.code}`} accountId={accountId} kind="subject" code={s.code} name={s.name} />
+                ))}
+                {l.teachers.map((x) => (
+                  <NameEdit key={`t-${x.code}`} accountId={accountId} kind="teacher" code={x.code} name={x.name} />
                 ))}
               </div>
             )}

@@ -86,7 +86,7 @@ var mcpTools = []mcpTool{
 	},
 	{
 		Name: "get_schedule", Title: "Get schedule",
-		Description: "Get the school schedule (lessons, exams, activities) for a date range, live from Zermelo. Each lesson has a status: scheduled, changed (see 'changes': teacher, location, group, time) or cancelled. Defaults to today. Times are local school time (Europe/Amsterdam). Maximum range is 42 days.",
+		Description: "Get the school schedule (lessons, exams, activities) for a date range, live from Zermelo. Teachers come as {code, name}; name equals code when unknown. Each lesson has a status: scheduled, changed (see 'changes': teacher, location, group, time) or cancelled. Defaults to today. Times are local school time (Europe/Amsterdam). Maximum range is 42 days.",
 		InputSchema: schema(nil, map[string]any{
 			"account":      accountProp,
 			"from":         str("First day, YYYY-MM-DD, or 'today' / 'tomorrow'. Defaults to today."),
@@ -177,6 +177,40 @@ var mcpTools = []mcpTool{
 			return map[string]any{"code": a.Code, "name": strings.TrimSpace(a.Name)}, s.Core.SetSubject(ctx, p, id, a.Code, a.Name)
 		},
 	},
+}
+
+func init() {
+	mcpTools = append(mcpTools,
+		mcpTool{
+			Name: "list_teachers", Title: "List teacher names",
+			Description: "List the teacher codes (like 'dkr') Melon has a name for on an account: the user's own names, plus the school's staff list for accounts that can view others.",
+			InputSchema: schema(nil, map[string]any{"account": accountProp}), Annotations: readOnly,
+			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
+				id, err := s.mcpAccount(ctx, p, a.Account)
+				if err != nil {
+					return nil, err
+				}
+				list, err := s.Core.Teachers(ctx, p, id)
+				return map[string]any{"teachers": list}, err
+			},
+		},
+		mcpTool{
+			Name: "rename_teacher", Title: "Name a teacher",
+			Description: "Set the name the user wants to see for a teacher code on an account. Pass an empty name to remove it. This only changes how Melon displays the teacher; nothing is written to Zermelo.",
+			InputSchema: schema([]string{"code", "name"}, map[string]any{"account": accountProp, "code": str("Teacher code, e.g. 'dkr'."), "name": str("Name to show, or empty to remove.")}),
+			Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
+				id, err := s.mcpAccount(ctx, p, a.Account)
+				if err != nil {
+					return nil, err
+				}
+				if strings.TrimSpace(a.Name) == "" {
+					return map[string]any{"code": a.Code, "reset": true}, s.Core.ResetTeacher(ctx, p, id, a.Code)
+				}
+				return map[string]any{"code": a.Code, "name": strings.TrimSpace(a.Name)}, s.Core.SetTeacher(ctx, p, id, a.Code, a.Name)
+			},
+		},
+	)
 }
 
 // mcpAccount resolves the account argument, defaulting when unambiguous.

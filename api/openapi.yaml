@@ -13,7 +13,8 @@ info:
     - Every successful response is `{ "data": ..., "meta": ... }`.
       Every failure is `{ "error": { "code": "...", "message": "..." } }` with a
       matching HTTP status. Codes are stable; messages are for humans.
-    - Subjects come with readable names (`wi` → `Wiskunde`). Users can rename them.
+    - Subjects come with readable names (`wi` → `Wiskunde`). Users can rename them,
+      and give teacher codes a name too.
     - Times are ISO 8601 with the school's UTC offset (Europe/Amsterdam). Days are `YYYY-MM-DD`.
 
     **Authentication**
@@ -33,7 +34,7 @@ info:
     **Read-only**
 
     Melon never writes to Zermelo. The only thing you can change is how Melon
-    names subjects.
+    names subjects and teachers.
 servers:
   - url: /api/v1
 security:
@@ -47,6 +48,8 @@ tags:
     description: Look up other students and teachers (staff accounts only).
   - name: Subjects
     description: Readable names for Zermelo's subject codes.
+  - name: Teachers
+    description: Names for Zermelo's teacher codes.
 paths:
   /accounts:
     get:
@@ -158,7 +161,7 @@ paths:
                       type: lesson
                       title: Geschiedenis
                       subjects: [{ code: gs, name: Geschiedenis }]
-                      teachers: [dkr]
+                      teachers: [{ code: dkr, name: Mevrouw Dekker }]
                       locations: ["210"]
                       groups: [3a.gs]
                       status: changed
@@ -326,6 +329,76 @@ paths:
         "204": { description: Reset. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/teachers:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Teachers]
+      operationId: listTeachers
+      summary: List teacher names
+      description: |
+        Every teacher code Melon has a name for on this account: the names the
+        account set itself, plus the school's staff list when the account has
+        `canViewOthers`. Codes that are not listed show up in schedules with
+        `name` equal to `code`.
+      responses:
+        "200":
+          description: Known teacher names.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/TeacherEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/teachers/{code}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: code
+        in: path
+        required: true
+        description: Zermelo teacher code, e.g. `dkr`. Case-insensitive.
+        schema: { type: string, maxLength: 32 }
+    put:
+      tags: [Teachers]
+      operationId: nameTeacher
+      summary: Name a teacher
+      description: Sets this account's own name for a teacher code. Only affects Melon; nothing is written to Zermelo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80, examples: ["Mevrouw Dekker"] }
+      responses:
+        "200":
+          description: The new name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/TeacherEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Teachers]
+      operationId: resetTeacher
+      summary: Remove a teacher name
+      description: Removes this account's own name for the code.
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     apiKey:
@@ -378,6 +451,19 @@ components:
           properties:
             defaultName: { type: string, description: What Melon calls it without the account's own name. }
             custom: { type: boolean, description: True when the account set its own name. }
+    Teacher:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, examples: ["dkr"] }
+        name: { type: string, description: The name to show. Equals `code` when Melon has no name for it., examples: ["Mevrouw Dekker"] }
+    TeacherEntry:
+      allOf:
+        - $ref: "#/components/schemas/Teacher"
+        - type: object
+          required: [custom]
+          properties:
+            custom: { type: boolean, description: True when the account set this name itself; false when it comes from the school's staff list. }
     Schedule:
       type: object
       required: [person, from, to, lessons, summary]
@@ -422,7 +508,9 @@ components:
         subjects:
           type: array
           items: { $ref: "#/components/schemas/Subject" }
-        teachers: { type: array, items: { type: string }, description: Teacher codes. }
+        teachers:
+          type: array
+          items: { $ref: "#/components/schemas/Teacher" }
         locations: { type: array, items: { type: string } }
         groups: { type: array, items: { type: string } }
         status: { type: string, enum: [scheduled, changed, cancelled] }

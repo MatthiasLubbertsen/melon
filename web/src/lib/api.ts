@@ -21,7 +21,7 @@ export type Lesson = {
   type: string
   title: string
   subjects: { code: string; name: string }[]
-  teachers: string[]
+  teachers: { code: string; name: string }[]
   locations: string[]
   groups: string[]
   status: 'scheduled' | 'changed' | 'cancelled'
@@ -43,6 +43,7 @@ export type Schedule = {
 
 export type Announcement = { id: string; title: string; text: string; start: string; end: string }
 export type SubjectEntry = { code: string; name: string; defaultName: string; custom: boolean }
+export type TeacherEntry = { code: string; name: string; custom: boolean }
 export type ApiKey = { id: string; name: string; hint: string; accountIds: string[]; createdAt: string; lastUsedAt: string | null; key?: string }
 export type Grant = { id: string; app: string; accountIds: string[]; createdAt: string; lastUsedAt: string | null }
 export type Calendar = { enabled: boolean; url?: string }
@@ -103,6 +104,12 @@ export const api = {
     data(request<SubjectEntry>('PUT', `/api/v1/accounts/${account}/subjects/${encodeURIComponent(code)}`, { name })),
   resetSubject: (account: string, code: string) =>
     data(request<void>('DELETE', `/api/v1/accounts/${account}/subjects/${encodeURIComponent(code)}`)),
+
+  teachers: (account: string) => data(request<TeacherEntry[]>('GET', `/api/v1/accounts/${account}/teachers`)),
+  setTeacher: (account: string, code: string, name: string) =>
+    data(request<TeacherEntry>('PUT', `/api/v1/accounts/${account}/teachers/${encodeURIComponent(code)}`, { name })),
+  resetTeacher: (account: string, code: string) =>
+    data(request<void>('DELETE', `/api/v1/accounts/${account}/teachers/${encodeURIComponent(code)}`)),
 
   calendar: (account: string) => data(request<Calendar>('GET', `/api/app/accounts/${account}/calendar`)),
   enableCalendar: (account: string) => data(request<Calendar>('POST', `/api/app/accounts/${account}/calendar`, {})),

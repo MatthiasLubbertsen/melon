@@ -67,11 +67,14 @@ func TestSubjectResolve(t *testing.T) {
 
 func TestChangeStatus(t *testing.T) {
 	loc := time.UTC
-	l := toLesson(zermelo.Appointment{ID: 1, Subjects: []string{"wi"}, TeacherChanged: true, TimeChanged: true}, loc, "nl", nil)
+	l := toLesson(zermelo.Appointment{ID: 1, Subjects: []string{"wi"}, TeacherChanged: true, TimeChanged: true, Teachers: []string{"DKR", "xyz"}}, loc, "nl", nil, map[string]string{"dkr": "M. Dekker"})
+	if len(l.Teachers) != 2 || l.Teachers[0].Name != "M. Dekker" || l.Teachers[1].Name != "xyz" {
+		t.Errorf("teacher names: %+v", l.Teachers)
+	}
 	if l.Status != "changed" || strings.Join(l.Changes, ",") != "teacher,time" {
 		t.Errorf("changed: %+v", l)
 	}
-	l = toLesson(zermelo.Appointment{ID: 1, Cancelled: true, LocationChanged: true}, loc, "nl", nil)
+	l = toLesson(zermelo.Appointment{ID: 1, Cancelled: true, LocationChanged: true}, loc, "nl", nil, nil)
 	if l.Status != "cancelled" {
 		t.Errorf("cancelled must win: %+v", l)
 	}
