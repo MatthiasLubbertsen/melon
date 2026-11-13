@@ -184,6 +184,9 @@ func (s *Service) healWide(ctx context.Context, a store.Account, token string) s
 	}
 	wideRechecked.Store(a.ID, time.Now())
 	users, err := s.directory(ctx, a, token)
+	// Logged so a teacher without a search bar can be told apart from a
+	// Zermelo failure: no names or codes, only what Zermelo answered.
+	slog.Info("re-checked whether the account can see others", "account", a.ID, "school", a.School, "users", len(users), "error", err)
 	if err != nil || len(users) < 2 {
 		return a
 	}
