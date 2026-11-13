@@ -236,10 +236,10 @@ function LoginSection() {
               <fieldset className="grid gap-1">
                 <legend className="mb-1.5 text-sm font-medium">{t('loginAccount')}</legend>
                 {accounts.map((a) => (
-                  <Label key={a.id} className={cn('flex min-h-11 items-center gap-3 rounded-lg border px-3 font-normal', a.id === accountId && 'border-primary bg-muted')}>
+                  <Label key={a.id} className={cn('flex min-h-11 items-center gap-3 rounded-lg border px-3 font-normal has-focus-visible:ring-3 has-focus-visible:ring-ring/50', a.id === accountId && 'border-honeydew-ink/40 bg-honeydew-tint font-medium text-honeydew-ink')}>
                     <input type="radio" name="login-account" className="sr-only" checked={a.id === accountId} onChange={() => setAccountId(a.id)} />
                     <span className="truncate">{a.name}</span>
-                    <span className="ml-auto shrink-0 font-mono text-sm text-muted-foreground">{a.userCode}</span>
+                    <span className={cn('ml-auto shrink-0 font-mono text-sm', a.id !== accountId && 'text-muted-foreground')}>{a.userCode}</span>
                   </Label>
                 ))}
               </fieldset>
