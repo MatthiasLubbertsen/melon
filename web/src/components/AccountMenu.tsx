@@ -51,7 +51,7 @@ export function AccountMenu() {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <LinkDialog open={linking} onOpenChange={setLinking} initialSchool={active.school === 'demo' ? '' : active.school} />
+      <LinkDialog open={linking} onOpenChange={setLinking} initialSchool={active.school === 'demo' ? undefined : active.school} />
     </>
   )
 }

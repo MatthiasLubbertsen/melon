@@ -12,12 +12,12 @@ import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 
 /** Link a Zermelo account: school + link code, or school + API token. */
-export function LinkForm({ onLinked, initialSchool = '' }: { onLinked?: (a: Account) => void; initialSchool?: string }) {
+export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) => void; initialSchool?: string }) {
   const { t, error } = useI18n()
-  const { setActive, reload } = useSession()
+  const { session, setActive, reload } = useSession()
   const qc = useQueryClient()
   const [mode, setMode] = useState<'code' | 'token'>('code')
-  const [school, setSchool] = useState(initialSchool)
+  const [school, setSchool] = useState(initialSchool ?? session.defaultSchool ?? '')
   const [secret, setSecret] = useState('')
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<{ field: 'school' | 'secret' | 'form'; text: string } | null>(null)

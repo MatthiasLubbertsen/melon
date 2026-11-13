@@ -15,7 +15,7 @@ import (
 // handleSession tells the web app what it is working with. It never fails
 // for anonymous visitors; they simply have no accounts yet.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"demo": s.Demo, "version": s.Version, "accounts": []core.Account{}}
+	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}}
 	if user, ok := s.sessionUser(r); ok {
 		accounts, err := s.Core.Accounts(r.Context(), core.Principal{UserID: user, All: true})
 		if err != nil {

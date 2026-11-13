@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,6 +76,15 @@ func run() error {
 	}
 	defer db.Close()
 
+	defaultSchool := ""
+	if v := env("MELON_DEFAULT_SCHOOL", ""); v != "" {
+		school, ok := zermelo.NormalizeSchool(v)
+		if !ok {
+			return fmt.Errorf("MELON_DEFAULT_SCHOOL %q is not a portal name like \"jfc\"", v)
+		}
+		defaultSchool = school
+	}
+
 	up := zermelo.Router{Real: zermelo.NewHTTP()}
 	if demo {
 		up.Demo = zermelo.Demo{Loc: loc}
@@ -84,7 +94,7 @@ func run() error {
 		Core: svc, Store: db,
 		PublicURL:  strings.TrimRight(env("MELON_PUBLIC_URL", ""), "/"),
 		TrustProxy: truthy("MELON_TRUST_PROXY"),
-		Demo:       demo, Version: version,
+		Demo:       demo, Version: version, DefaultSchool: defaultSchool,
 		Static: web.Dist(), OpenAPI: api.OpenAPI,
 	}
 	httpServer := &http.Server{

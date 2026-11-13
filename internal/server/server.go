@@ -40,9 +40,11 @@ type Server struct {
 	PublicURL  string
 	TrustProxy bool
 	Demo       bool
-	Version    string
-	Static     fs.FS  // built web app
-	OpenAPI    []byte // openapi.yaml
+	// DefaultSchool prefills the school field when linking; users can change it.
+	DefaultSchool string
+	Version       string
+	Static        fs.FS  // built web app
+	OpenAPI       []byte // openapi.yaml
 
 	limitMu  sync.Mutex
 	limiters map[string]*clientLimiter

@@ -23,15 +23,19 @@ export function Chip({ tone, children, className }: { tone: Tone; children: Reac
 }
 
 /** A tinted banner for things the user should not miss. */
-export function Banner({ tone, icon, title, children, action }: { tone: Tone; icon?: ReactNode; title: ReactNode; children?: ReactNode; action?: ReactNode }) {
+export function Banner({ tone, icon, title, children, action, below }: { tone: Tone; icon?: ReactNode; title: ReactNode; children?: ReactNode; action?: ReactNode; below?: ReactNode }) {
   return (
-    <div role="status" className={cn('flex items-start gap-3 rounded-xl px-3.5 py-3 text-sm [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0', tones[tone])}>
-      {icon}
-      <div className="min-w-0 flex-1">
-        <p className="font-medium">{title}</p>
-        {children && <div className="mt-0.5 opacity-90">{children}</div>}
+    <div role="status" className={cn('rounded-xl px-3.5 py-3 text-sm', tones[tone])}>
+      <div className="flex items-start gap-3 [&>svg]:mt-0.5 [&>svg]:size-4 [&>svg]:shrink-0">
+        {icon}
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{title}</p>
+          {children && <div className="mt-0.5 opacity-90">{children}</div>}
+        </div>
+        {action}
       </div>
-      {action}
+      {/* Full width, flush with the banner's left edge. */}
+      {below && <div className="mt-1.5 opacity-90">{below}</div>}
     </div>
   )
 }

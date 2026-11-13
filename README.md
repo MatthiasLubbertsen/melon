@@ -43,6 +43,7 @@ losing it means everyone has to link again.
 | `MELON_ADDR` | `:8080` | Listen address. |
 | `MELON_DATA_DIR` | `./data` (`/data` in Docker) | SQLite database location. |
 | `MELON_TRUST_PROXY` | off | Trust `X-Forwarded-*` headers (set behind a reverse proxy). |
+| `MELON_DEFAULT_SCHOOL` | none | Portal name (e.g. `jfc`) prefilled in the school field. Users can still change it. |
 | `MELON_DEMO` | off | Enables the generated demo school and the "Bekijk de demo" button. |
 | `MELON_TIMEZONE` | `Europe/Amsterdam` | School timezone. |
 

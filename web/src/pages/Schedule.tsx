@@ -214,16 +214,21 @@ export function Schedule() {
         {/* Changes can't be missed: they are counted here, dotted in the day picker and edged on each card. */}
         {!loading && dayChanges.length > 0 && (
           <div className="md:hidden">
-            <Banner tone={dayChanges.some((l) => l.status === 'cancelled') ? 'watermelon' : 'cantaloupe'} icon={<TriangleAlert />} title={plural(day === todayStr ? 'changesToday' : 'changesDay', dayChanges.length)}>
-              <ul className="grid gap-0.5">
-                {dayChanges.map((l) => (
-                  <li key={l.id} className="truncate">
-                    {l.period ? `${l.period.from}. ` : ''}
-                    {l.title}: {l.status === 'cancelled' ? t('cancelled').toLowerCase() : l.changes.map((c) => t(`change_${c}`).toLowerCase()).join(', ')}
-                  </li>
-                ))}
-              </ul>
-            </Banner>
+            <Banner
+              tone={dayChanges.some((l) => l.status === 'cancelled') ? 'watermelon' : 'cantaloupe'}
+              icon={<TriangleAlert />}
+              title={plural(day === todayStr ? 'changesToday' : 'changesDay', dayChanges.length)}
+              below={
+                <ul className="grid gap-0.5">
+                  {dayChanges.map((l) => (
+                    <li key={l.id} className="truncate">
+                      {l.period && <span className="font-medium">{t('period', { n: l.period.from })} </span>}
+                      {l.title}: {l.status === 'cancelled' ? t('cancelled').toLowerCase() : l.changes.map((c) => t(`change_${c}`).toLowerCase()).join(', ')}
+                    </li>
+                  ))}
+                </ul>
+              }
+            />
           </div>
         )}
 

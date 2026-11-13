@@ -77,8 +77,13 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
       {/* The coloured edge makes changes visible while scrolling. */}
       <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1.5', cancelled ? 'bg-watermelon' : changed ? 'bg-cantaloupe' : isNow ? 'bg-honeydew' : 'bg-transparent')} />
       <span className="flex w-11 shrink-0 flex-col items-center justify-center text-center">
-        <span className={cn('text-xl leading-none font-semibold tabular-nums', cancelled && 'text-muted-foreground')}>{lesson.period ? lesson.period.from : '·'}</span>
-        <span className="mt-1.5 text-[0.7rem] leading-tight text-muted-foreground tabular-nums">
+        {lesson.period && (
+          <span className={cn('leading-none', cancelled && 'text-muted-foreground')} aria-label={t('period', { n: lesson.period.from })}>
+            <span className="text-xl font-semibold tabular-nums">{t('periodNumber', { n: lesson.period.from })}</span>
+            <span className="block pt-0.5 text-[0.7rem] font-medium">{t('periodWord')}</span>
+          </span>
+        )}
+        <span className={cn('text-[0.7rem] leading-tight text-muted-foreground tabular-nums', lesson.period && 'mt-1.5')}>
           {formatTime(lesson.start, locale)}
           <br />
           {formatTime(lesson.end, locale)}
@@ -97,7 +102,6 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
         {lesson.changeNote && !cancelled && <span className="text-sm text-cantaloupe-ink">{lesson.changeNote}</span>}
         {lesson.note && lesson.note !== lesson.title && <span className="truncate text-sm text-muted-foreground">{lesson.note}</span>}
       </span>
-      <span className="sr-only">{lesson.period ? t('period', { n: lesson.period.from }) : ''}</span>
     </button>
   )
 }

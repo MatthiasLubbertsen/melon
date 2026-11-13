@@ -100,7 +100,7 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 			desc = append(desc, word("Groep: ", "Group: ")+strings.Join(l.Groups, ", "))
 		}
 		if l.Period != nil {
-			desc = append(desc, fmt.Sprintf(word("Lesuur: %d", "Period: %d"), l.Period.From))
+			desc = append(desc, fmt.Sprintf(word("%de uur", "Period %d"), l.Period.From))
 		}
 		modified := sched.FetchedAt
 		if l.UpdatedAt != nil {

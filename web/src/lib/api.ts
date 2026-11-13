@@ -46,7 +46,7 @@ export type SubjectEntry = { code: string; name: string; defaultName: string; cu
 export type ApiKey = { id: string; name: string; hint: string; accountIds: string[]; createdAt: string; lastUsedAt: string | null; key?: string }
 export type Grant = { id: string; app: string; accountIds: string[]; createdAt: string; lastUsedAt: string | null }
 export type Calendar = { enabled: boolean; url?: string }
-export type Session = { demo: boolean; version: string; accounts: Account[] }
+export type Session = { demo: boolean; version: string; defaultSchool: string; accounts: Account[] }
 export type Meta = { fetchedAt?: string; stale?: boolean }
 
 export class ApiError extends Error {
