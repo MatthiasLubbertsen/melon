@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -165,6 +166,35 @@ type SubjectEntry struct {
 
 // ---- accounts ----
 
+// wideRechecked remembers when an account last had its "can see others" flag
+// re-checked, so an account that really cannot is not probed on every request.
+var wideRechecked sync.Map
+
+const wideRecheckEvery = 10 * time.Minute
+
+// healWide re-checks a teacher account saved as unable to see others. The
+// check made when linking can fail for a moment and would otherwise stick for
+// good, leaving the account without its search bar.
+func (s *Service) healWide(ctx context.Context, a store.Account, token string) store.Account {
+	if a.Wide || a.Role != "employee" {
+		return a
+	}
+	if t, ok := wideRechecked.Load(a.ID); ok && time.Since(t.(time.Time)) < wideRecheckEvery {
+		return a
+	}
+	wideRechecked.Store(a.ID, time.Now())
+	users, err := s.directory(ctx, a, token)
+	if err != nil || len(users) < 2 {
+		return a
+	}
+	if err := s.Store.SetWide(ctx, a.ID, true); err != nil {
+		slog.Warn("cannot save that the account can see others", "account", a.ID, "error", err)
+		return a
+	}
+	a.Wide = true
+	return a
+}
+
 func toAccount(a store.Account) Account {
 	return Account{ID: a.ID, School: a.School, Name: a.DisplayName, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide}
 }
@@ -253,9 +283,15 @@ func (s *Service) Accounts(ctx context.Context, p Principal) ([]Account, error) 
 	}
 	out := []Account{}
 	for _, a := range rows {
-		if p.allows(a.ID) {
-			out = append(out, toAccount(a))
+		if !p.allows(a.ID) {
+			continue
 		}
+		if !a.Wide && a.Role == "employee" {
+			if token, err := s.Box.Open(a.TokenEnc, a.ID); err == nil {
+				a = s.healWide(ctx, a, token)
+			}
+		}
+		out = append(out, toAccount(a))
 	}
 	return out, nil
 }
@@ -277,7 +313,7 @@ func (s *Service) account(ctx context.Context, p Principal, id string) (store.Ac
 		slog.Error("cannot decrypt account token; was MELON_SECRET changed?", "account", a.ID)
 		return a, "", Errf(http.StatusConflict, "account_link_expired", "This account needs to be linked again.")
 	}
-	return a, token, nil
+	return s.healWide(ctx, a, token), token, nil
 }
 
 func (s *Service) Account(ctx context.Context, p Principal, id string) (Account, error) {

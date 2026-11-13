@@ -336,6 +336,11 @@ func (s *Store) AccountByCalendar(ctx context.Context, calHash string) (Account,
 	return scanAccount(s.db.QueryRowContext(ctx, `SELECT `+accountCols+` FROM accounts WHERE cal_hash = ?`, calHash))
 }
 
+// SetWide records whether the account's token can list other people.
+func (s *Store) SetWide(ctx context.Context, id string, wide bool) error {
+	return affected(s.db.ExecContext(ctx, `UPDATE accounts SET wide = ? WHERE id = ?`, wide, id))
+}
+
 func (s *Store) DeleteAccount(ctx context.Context, userID, id string) error {
 	return affected(s.db.ExecContext(ctx, `DELETE FROM accounts WHERE user_id = ? AND id = ?`, userID, id))
 }
