@@ -177,7 +177,7 @@ func (s *Store) DeleteOtherSessions(ctx context.Context, userID, keepHash string
 // its Zermelo accounts, plus a PIN.
 type Login struct {
 	UserID  string
-	Name    string // the Zermelo user code, e.g. 16528
+	Name    string // the Zermelo user code, e.g. 12345
 	School  string
 	PINHash string
 }
