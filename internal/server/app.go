@@ -15,16 +15,31 @@ import (
 // handleSession tells the web app what it is working with. It never fails
 // for anonymous visitors; they simply have no accounts yet.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}}
-	if user, ok := s.sessionUser(r); ok {
-		accounts, err := s.Core.Accounts(r.Context(), core.Principal{UserID: user, All: true})
-		if err != nil {
-			writeErr(w, err)
-			return
-		}
-		out["accounts"] = accounts
+	user, _ := s.sessionUser(r)
+	out, err := s.sessionBody(r, user)
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
 	writeData(w, out)
+}
+
+func (s *Server) sessionBody(r *http.Request, user string) (map[string]any, error) {
+	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}, "login": nil}
+	if user == "" {
+		return out, nil
+	}
+	accounts, err := s.Core.Accounts(r.Context(), core.Principal{UserID: user, All: true})
+	if err != nil {
+		return nil, err
+	}
+	out["accounts"] = accounts
+	if l, err := s.Store.Login(r.Context(), user); err == nil {
+		out["login"] = loginView{UserID: l.Name, School: l.School}
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	return out, nil
 }
 
 // handleForget deletes the profile and everything it owns: linked accounts,
@@ -38,7 +53,7 @@ func (s *Server) handleForget(w http.ResponseWriter, r *http.Request, p core.Pri
 	for _, a := range accounts {
 		s.Core.Cache.Drop("acct:" + a.ID + ":")
 	}
-	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.isHTTPS(r), SameSite: http.SameSiteLaxMode})
+	s.clearSessionCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 

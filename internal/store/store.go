@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   created_at INTEGER NOT NULL, last_seen INTEGER NOT NULL, expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS logins (
+  user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  login TEXT NOT NULL, school TEXT NOT NULL,
+  pin_hash TEXT NOT NULL,
+  fails INTEGER NOT NULL DEFAULT 0, locked_until INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  UNIQUE (login, school)
+);
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -154,6 +162,109 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 // DeleteUser removes a profile and, by cascade, everything it owns.
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	return err
+}
+
+// DeleteOtherSessions signs the profile out everywhere except the given session.
+func (s *Store) DeleteOtherSessions(ctx context.Context, userID, keepHash string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ? AND token_hash != ?`, userID, keepHash)
+	return err
+}
+
+// ---- sign-in (user number + PIN) ----
+
+// Login is how a profile signs in on another device: the user code of one of
+// its Zermelo accounts, plus a PIN.
+type Login struct {
+	UserID  string
+	Name    string // the Zermelo user code, e.g. 16528
+	School  string
+	PINHash string
+}
+
+const (
+	// PINFreeTries is how many wrong PINs in a row are free. After that every
+	// further try locks sign-in, for PINLockBase and then twice as long each
+	// time, up to PINLockMax. That leaves about a dozen guesses on day one and
+	// one per day after, against 10,000 possible PINs.
+	PINFreeTries = 5
+	PINLockBase  = 15 * 60
+	PINLockMax   = 24 * 3600
+)
+
+// SetLogin gives the profile a sign-in name and PIN. A name belongs to
+// whoever proved the Zermelo account last, so an earlier holder loses it.
+func (s *Store) SetLogin(ctx context.Context, l Login) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM logins WHERE user_id = ? OR (login = ? AND school = ?)`, l.UserID, l.Name, l.School); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO logins (user_id, login, school, pin_hash, created_at) VALUES (?,?,?,?,?)`, l.UserID, l.Name, l.School, l.PINHash, now()); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *Store) Login(ctx context.Context, userID string) (Login, error) {
+	l := Login{UserID: userID}
+	err := s.db.QueryRowContext(ctx, `SELECT login, school, pin_hash FROM logins WHERE user_id = ?`, userID).Scan(&l.Name, &l.School, &l.PINHash)
+	return l, one(err)
+}
+
+// LoginsByName finds who signs in with this name. School narrows it down
+// when given; without it the same number at two schools yields two rows.
+func (s *Store) LoginsByName(ctx context.Context, name, school string) ([]Login, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id, login, school, pin_hash FROM logins WHERE login = ? COLLATE NOCASE AND (? = '' OR school = ?) ORDER BY created_at LIMIT 8`, name, school, school)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Login
+	for rows.Next() {
+		var l Login
+		if err := rows.Scan(&l.UserID, &l.Name, &l.School, &l.PINHash); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// BeginPINAttempt spends one try before the PIN is looked at, so parallel
+// guesses cannot outrun the counter. It reports false while sign-in is
+// locked, and then also how many seconds remain.
+func (s *Store) BeginPINAttempt(ctx context.Context, userID string) (ok bool, wait int64, err error) {
+	n := now()
+	var fails int64
+	err = s.db.QueryRowContext(ctx, `UPDATE logins SET fails = fails + 1,
+		locked_until = CASE WHEN fails + 1 >= ? THEN ? + MIN(?, ? * (1 << MIN(fails + 1 - ?, 20))) ELSE 0 END
+		WHERE user_id = ? AND locked_until <= ? RETURNING fails`,
+		PINFreeTries, n, PINLockMax, PINLockBase, PINFreeTries, userID, n).Scan(&fails)
+	if err == nil {
+		return true, 0, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, 0, err
+	}
+	var until int64
+	if err := s.db.QueryRowContext(ctx, `SELECT locked_until FROM logins WHERE user_id = ?`, userID).Scan(&until); err != nil {
+		return false, 0, one(err)
+	}
+	return false, max(until-n, 1), nil
+}
+
+// EndPINAttempt forgets earlier wrong tries after a correct PIN.
+func (s *Store) EndPINAttempt(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE logins SET fails = 0, locked_until = 0 WHERE user_id = ?`, userID)
+	return err
+}
+
+func (s *Store) DeleteLogin(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM logins WHERE user_id = ?`, userID)
 	return err
 }
 

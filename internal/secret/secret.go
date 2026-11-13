@@ -6,6 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -18,7 +19,10 @@ import (
 )
 
 // Box encrypts small secrets with AES-256-GCM.
-type Box struct{ aead cipher.AEAD }
+type Box struct {
+	aead cipher.AEAD
+	pin  []byte
+}
 
 // NewBox derives an encryption key from arbitrary master key material.
 func NewBox(master []byte) (*Box, error) {
@@ -37,7 +41,25 @@ func NewBox(master []byte) (*Box, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Box{aead: aead}, nil
+	pin, err := hkdf.Key(sha256.New, master, nil, "melon/pin/v1", 32)
+	if err != nil {
+		return nil, err
+	}
+	return &Box{aead: aead, pin: pin}, nil
+}
+
+// PINHash turns a sign-in PIN into what is stored. A four digit PIN has no
+// entropy of its own, so it is keyed with the master secret (a database leak
+// alone reveals nothing) and bound to its owner (equal PINs do not look equal).
+func (b *Box) PINHash(owner, pin string) string {
+	mac := hmac.New(sha256.New, b.pin)
+	mac.Write([]byte(owner + "\x00" + pin))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// PINMatches compares in constant time.
+func (b *Box) PINMatches(hash, owner, pin string) bool {
+	return hmac.Equal([]byte(hash), []byte(b.PINHash(owner, pin)))
 }
 
 // Seal encrypts plaintext. The context (e.g. the row id) is bound as

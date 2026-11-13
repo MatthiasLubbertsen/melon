@@ -83,6 +83,10 @@ func (s *Server) Handler() http.Handler {
 	// Web app management; browser session only.
 	mux.HandleFunc("GET /api/app/session", s.handleSession)
 	mux.HandleFunc("DELETE /api/app/session", s.sessionOnly(s.handleForget))
+	mux.HandleFunc("POST /api/app/login", s.handleSignIn)
+	mux.HandleFunc("POST /api/app/logout", s.sessionOnly(s.handleSignOut))
+	mux.HandleFunc("PUT /api/app/pin", s.sessionOnly(s.handleSetPIN))
+	mux.HandleFunc("DELETE /api/app/pin", s.sessionOnly(s.handleClearPIN))
 	mux.HandleFunc("POST /api/app/accounts", s.handleLink)
 	mux.HandleFunc("POST /api/app/demo", s.handleDemo)
 	mux.HandleFunc("DELETE /api/app/accounts/{account}", s.sessionOnly(s.handleUnlink))
@@ -155,8 +159,8 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 }
 
 // allow applies a per-client budget: by credential when one is presented,
-// otherwise by IP. Linking gets a much smaller budget because that is where
-// guessing link codes would happen.
+// otherwise by IP. Linking and signing in get a much smaller budget because
+// that is where guessing link codes and PINs would happen.
 func (s *Server) allow(r *http.Request) bool {
 	key, per, burst := "ip:"+s.clientIP(r), rate.Limit(10), 60
 	if auth := r.Header.Get("Authorization"); auth != "" {
@@ -167,6 +171,8 @@ func (s *Server) allow(r *http.Request) bool {
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/app/accounts":
 		key, per, burst = "link:"+s.clientIP(r), rate.Limit(0.2), 10
+	case r.Method == http.MethodPost && r.URL.Path == "/api/app/login":
+		key, per, burst = "login:"+s.clientIP(r), rate.Limit(0.2), 10
 	case strings.HasPrefix(r.URL.Path, "/oauth/"):
 		// Hosted MCP clients serve many users from few addresses.
 		key, per, burst = "oauth:"+s.clientIP(r), rate.Limit(2), 30
@@ -317,7 +323,8 @@ func (s *Server) sessionOnly(next handler) http.HandlerFunc {
 }
 
 // ensureSession returns the caller's profile, creating one (and its cookie)
-// on first use. Melon has no passwords: a profile is the browser it lives in.
+// on first use. A profile starts out as just the browser it lives in; setting
+// a PIN is what lets it be opened from other devices.
 func (s *Server) ensureSession(w http.ResponseWriter, r *http.Request) (string, error) {
 	if user, ok := s.sessionUser(r); ok {
 		return user, nil
@@ -326,15 +333,24 @@ func (s *Server) ensureSession(w http.ResponseWriter, r *http.Request) (string, 
 	if err := s.Store.CreateUser(r.Context(), user); err != nil {
 		return "", err
 	}
+	return user, s.startSession(w, r, user)
+}
+
+// startSession signs this browser in to the profile.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user string) error {
 	token := secret.Token("")
 	if err := s.Store.CreateSession(r.Context(), secret.Hash(token), user, sessionTTL); err != nil {
-		return "", err
+		return err
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookie, Value: token, Path: "/", MaxAge: int(sessionTTL.Seconds()),
 		HttpOnly: true, Secure: s.isHTTPS(r), SameSite: http.SameSiteLaxMode,
 	})
-	return user, nil
+	return nil
+}
+
+func (s *Server) clearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Path: "/", MaxAge: -1, HttpOnly: true, Secure: s.isHTTPS(r), SameSite: http.SameSiteLaxMode})
 }
 
 // ---- JSON helpers ----
