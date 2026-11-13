@@ -1,0 +1,10 @@
+{
+  "name": "Melon",
+  "short_name": "Melon",
+  "description": "Je Zermelo-rooster, maar dan overzichtelijk.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#12150F",
+  "theme_color": "#12150F",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

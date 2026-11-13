@@ -1,0 +1,9 @@
+/data/
+/melon
+/screenshots/
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+*.log
+web/scripts/node_modules/
+web/scripts/package*.json

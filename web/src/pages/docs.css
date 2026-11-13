@@ -1,0 +1,26 @@
+/* Dress the API reference in melon colours and Lexend. */
+.scalar-app {
+  --scalar-font: 'Lexend Variable', ui-sans-serif, system-ui, sans-serif;
+  --scalar-radius: 0.5rem;
+  --scalar-radius-lg: 0.75rem;
+}
+.light-mode {
+  --scalar-background-1: #fbfcf8;
+  --scalar-background-2: #f0f3ea;
+  --scalar-background-3: #e1e6d8;
+  --scalar-color-1: #1d2418;
+  --scalar-color-2: #626b59;
+  --scalar-color-accent: #3f5c26;
+  --scalar-background-accent: #ebf3e1;
+  --scalar-border-color: #e1e6d8;
+}
+.dark-mode {
+  --scalar-background-1: #12150f;
+  --scalar-background-2: #1a1e16;
+  --scalar-background-3: #252a20;
+  --scalar-color-1: #eef2e8;
+  --scalar-color-2: #a2ab98;
+  --scalar-color-accent: #b6d29a;
+  --scalar-background-accent: #26331e;
+  --scalar-border-color: #2c3226;
+}
