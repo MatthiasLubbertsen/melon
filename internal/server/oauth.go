@@ -234,18 +234,38 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		}
 		sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
 		challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-		if c.ClientID != r.PostForm.Get("client_id") || c.RedirectURI != r.PostForm.Get("redirect_uri") ||
-			subtle.ConstantTimeCompare([]byte(challenge), []byte(c.Challenge)) != 1 {
+		// Gateways and aggregators differ in how they present a public client:
+		// the id may come as HTTP Basic credentials, and redirect_uri may be
+		// left out. PKCE still binds the code to whoever started the flow.
+		clientID := r.PostForm.Get("client_id")
+		if user, _, ok := r.BasicAuth(); ok && clientID == "" {
+			clientID = user
+		}
+		redirectURI := r.PostForm.Get("redirect_uri")
+		var problem string
+		switch {
+		case c.ClientID != clientID:
+			problem = "The client_id does not match the authorization request."
+		case redirectURI != "" && c.RedirectURI != redirectURI:
+			problem = "The redirect_uri does not match the authorization request."
+		case subtle.ConstantTimeCompare([]byte(challenge), []byte(c.Challenge)) != 1:
+			problem = "The code_verifier does not match the code_challenge."
+		}
+		if problem != "" {
 			// The code is already consumed; drop the consent it belonged to.
 			_ = s.Store.DeleteOAuthGrant(r.Context(), s.grantOwner(r, c.GrantID), c.GrantID)
-			oauthErr(w, http.StatusBadRequest, "invalid_grant", "Client, redirect URI or PKCE verifier do not match the authorization request.")
+			oauthErr(w, http.StatusBadRequest, "invalid_grant", problem+" Start the connection again.")
 			return
 		}
 		s.issueTokens(w, r, c.GrantID)
 	case "refresh_token":
 		hash := secret.Hash(r.PostForm.Get("refresh_token"))
 		g, err := s.Store.OAuthGrantByToken(r.Context(), hash, "refresh")
-		if err != nil || g.ClientID != r.PostForm.Get("client_id") {
+		clientID := r.PostForm.Get("client_id")
+		if user, _, ok := r.BasicAuth(); ok && clientID == "" {
+			clientID = user
+		}
+		if err != nil || g.ClientID != clientID {
 			oauthErr(w, http.StatusBadRequest, "invalid_grant", "The refresh token is invalid, expired or revoked.")
 			return
 		}
