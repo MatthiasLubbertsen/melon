@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Avatar, Banner } from '@/components/bits'
 import { LinkForm } from '@/components/LinkForm'
+import { SignInForm } from '@/components/SignInForm'
 import { Logo } from '@/components/Logo'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
@@ -21,6 +22,7 @@ export function Consent() {
   const redirectUri = params.get('redirect_uri') ?? ''
   const state = params.get('state') ?? ''
   const [picked, setPicked] = useState<string[]>([])
+  const [signingIn, setSigningIn] = useState(false)
 
   // With one account there is nothing to choose; preselect it.
   useEffect(() => {
@@ -68,8 +70,11 @@ export function Consent() {
 
           {accounts.length === 0 ? (
             <section className="grid gap-4">
-              <p className="font-medium">{t('consentNeedAccount')}</p>
-              <LinkForm />
+              <p className="font-medium">{signingIn ? t('signInTitle') : t('consentNeedAccount')}</p>
+              {signingIn ? <SignInForm /> : <LinkForm />}
+              <Button variant="ghost" className="h-11 text-base" onClick={() => setSigningIn(!signingIn)}>
+                {signingIn ? t('noAccountYet') : t('haveAccount')}
+              </Button>
             </section>
           ) : (
             <>
