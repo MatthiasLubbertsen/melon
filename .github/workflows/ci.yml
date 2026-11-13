@@ -54,6 +54,9 @@ jobs:
     name: Screenshots (demo data)
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -80,6 +83,45 @@ jobs:
           name: screenshots
           path: screenshots
           if-no-files-found: error
+      - name: Show the screenshots on the pull request
+        # Same-repo pull requests only: a fork's token cannot write.
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          work="$RUNNER_TEMP/shots"
+          if git ls-remote --exit-code --heads "$remote" ci-screenshots >/dev/null 2>&1; then
+            git clone -q --depth 1 --branch ci-screenshots "$remote" "$work"
+          else
+            git init -q -b ci-screenshots "$work"
+            git -C "$work" remote add origin "$remote"
+          fi
+          short="${SHA:0:8}"
+          rm -rf "$work/pr-$PR"
+          mkdir -p "$work/pr-$PR/$short"
+          cp screenshots/*.png "$work/pr-$PR/$short/"
+          git -C "$work" add -A
+          git -C "$work" commit -q -m "Screenshots for #$PR at $short"
+          for try in 1 2 3; do
+            git -C "$work" push -q origin HEAD:ci-screenshots && break
+            git -C "$work" pull -q --rebase origin ci-screenshots
+          done
+          base="https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/ci-screenshots/pr-$PR/$short"
+          {
+            echo "### Screenshots (demo data) for \`$short\`"
+            echo
+            for f in screenshots/*.png; do
+              n="$(basename "$f")"
+              echo "<a href=\"$base/$n\"><img src=\"$base/$n\" width=\"180\" alt=\"${n%.png}\" title=\"${n%.png}\"></a>"
+            done
+          } > "$RUNNER_TEMP/comment.md"
+          gh pr comment "$PR" --edit-last --create-if-none --body-file "$RUNNER_TEMP/comment.md"
 
   docker:
     name: Docker image
