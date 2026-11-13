@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AccountMenu } from '@/components/AccountMenu'
 import { Banner } from '@/components/bits'
+import { CodeLookup } from '@/components/CodeLookup'
 import { LessonCard, LessonDrawer } from '@/components/Lesson'
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
@@ -188,6 +189,7 @@ export function Schedule() {
 
       <main className="grid gap-3 px-3 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         {account.canViewOthers && <PeopleSearch accountId={account.id} onPick={setPerson} />}
+        {!account.canViewOthers && account.role === 'employee' && <CodeLookup onPick={setPerson} />}
 
         {person && (
           <Banner

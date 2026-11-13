@@ -131,6 +131,16 @@ func seed(parts ...string) *rand.Rand {
 	return rand.New(rand.NewSource(int64(h.Sum64())))
 }
 
+// Appointments gives the demo teacher the same by-code lookup as the real API.
+func (d Demo) Appointments(ctx context.Context, school, token, code string, from, _ time.Time) ([]Appointment, error) {
+	kind := "teacher"
+	if _, err := strconv.Atoi(code); err == nil {
+		kind = "student"
+	}
+	y, w := from.In(d.Loc).ISOWeek()
+	return d.LiveSchedule(ctx, school, token, kind, code, fmt.Sprintf("%04d%02d", y, w))
+}
+
 func (d Demo) LiveSchedule(_ context.Context, _, token, kind, code, week string) ([]Appointment, error) {
 	me, err := d.user(token)
 	if err != nil {
@@ -272,6 +282,9 @@ func (r Router) Me(ctx context.Context, school, token string) (User, error) {
 }
 func (r Router) Users(ctx context.Context, school, token string) ([]User, error) {
 	return r.pick(school).Users(ctx, school, token)
+}
+func (r Router) Appointments(ctx context.Context, school, token, code string, from, to time.Time) ([]Appointment, error) {
+	return r.pick(school).Appointments(ctx, school, token, code, from, to)
 }
 func (r Router) LiveSchedule(ctx context.Context, school, token, kind, code, week string) ([]Appointment, error) {
 	return r.pick(school).LiveSchedule(ctx, school, token, kind, code, week)

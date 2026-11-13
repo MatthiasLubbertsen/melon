@@ -78,6 +78,8 @@ const nl = {
   // people
   searchPeople: 'Zoek een leerling of docent',
   noResults: 'Niemand gevonden',
+  lookupCode: 'Rooster opzoeken met een code (16528, dh)',
+  lookupOpen: 'Rooster openen',
   viewing: 'Rooster van {name}',
   backToMine: 'Terug naar mijn rooster',
   student: 'Leerling',
@@ -273,6 +275,8 @@ const en: typeof nl = {
   announcements: 'Announcements',
   searchPeople: 'Find a student or teacher',
   noResults: 'No one found',
+  lookupCode: 'Open a schedule by code (16528, dh)',
+  lookupOpen: 'Open schedule',
   viewing: 'Schedule of {name}',
   backToMine: 'Back to my schedule',
   student: 'Student',

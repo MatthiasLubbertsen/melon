@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -437,6 +438,20 @@ func (s *Service) People(ctx context.Context, p Principal, accountID, query stri
 	return out, nil
 }
 
+// validCode accepts what Zermelo user codes look like (digits or letters, a
+// few separators) and nothing that could change the request it goes into.
+func validCode(code string) bool {
+	if code == "" || len(code) > 32 {
+		return false
+	}
+	for _, r := range code {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
 // fold lowercases and strips the diacritics common in Dutch names, so that
 // "zoe" finds "Zoë".
 func fold(s string) string {
@@ -470,10 +485,24 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 	if a.Role == "employee" {
 		person.Type = "employee"
 	}
+	// A teacher whose token cannot list users still reads others by code.
+	byCode := false
 	if q.Person != "" && q.Person != a.ZermeloUser {
-		if !a.Wide {
+		if !a.Wide && a.Role == "employee" {
+			code := strings.ToLower(strings.TrimSpace(q.Person))
+			if !validCode(code) {
+				return Schedule{}, Errf(http.StatusBadRequest, "invalid_request", "That is not a user code.")
+			}
+			person = Person{Code: code, Name: code, Type: "employee"}
+			if _, err := strconv.Atoi(code); err == nil {
+				person.Type = "student"
+			}
+			byCode = true
+		} else if !a.Wide {
 			return Schedule{}, Errf(http.StatusForbidden, "forbidden", "This account can only see its own schedule.")
 		}
+	}
+	if q.Person != "" && q.Person != a.ZermeloUser && !byCode {
 		users, err := s.directory(ctx, a, token)
 		if err != nil {
 			return Schedule{}, err
@@ -526,8 +555,18 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 	for i, week := range weeks {
 		go func() {
 			key := fmt.Sprintf("acct:%s:schedule:%s:%s:%s", a.ID, kind, person.Code, week)
+			if byCode {
+				key = fmt.Sprintf("acct:%s:appointments:%s:%s", a.ID, person.Code, week)
+			}
 			r := &results[i]
 			r.appts, r.res, r.err = zermelo.Get(ctx, s.Cache, key, ttl, func(ctx context.Context) ([]zermelo.Appointment, error) {
+				if byCode {
+					from, err := zermelo.WeekStart(week, s.Loc)
+					if err != nil {
+						return nil, err
+					}
+					return s.Up.Appointments(ctx, a.School, token, person.Code, from, from.AddDate(0, 0, 7))
+				}
 				return s.Up.LiveSchedule(ctx, a.School, token, kind, person.Code, week)
 			})
 			done <- i
