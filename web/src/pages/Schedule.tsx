@@ -124,10 +124,14 @@ export function Schedule() {
       <header className="sticky top-0 z-20 border-b bg-background/90 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur md:px-6">
         <div className="flex items-center gap-1">
           <Logo className="mr-1 hidden text-2xl sm:inline-flex" withName />
-          <div className="min-w-0 flex-1 sm:ml-3 sm:flex-none">
+          <div className="min-w-0 shrink sm:ml-3">
             <AccountMenu />
           </div>
-          <span className="hidden flex-1 sm:block" />
+          <button type="button" onClick={refresh} disabled={busy} className="flex min-h-9 shrink-0 items-center gap-1.5 rounded-full px-2 text-xs text-muted-foreground hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" aria-label={t('refresh')}>
+            <span aria-live="polite" className="max-w-[9rem] truncate sm:max-w-none">{busy ? t('refreshing') : fetchedAt ? t('updated', { ago }) : ''}</span>
+            <RefreshCw className={cn('size-3.5', busy && 'animate-spin')} />
+          </button>
+          <span className="flex-1" />
           <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t('settings')} render={<Link to="/settings" />}>
             <Settings className="size-5" />
           </Button>
@@ -242,14 +246,7 @@ export function Schedule() {
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
-          <h1 className="font-medium text-foreground first-letter:uppercase md:hidden">{formatDay(day, locale, { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
-          <span className="hidden md:block" />
-          <button type="button" onClick={refresh} disabled={busy} className="-mr-1 flex min-h-9 items-center gap-1.5 rounded-full px-2 hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none" aria-label={t('refresh')}>
-            <span aria-live="polite">{busy ? t('refreshing') : fetchedAt ? t('updated', { ago }) : ''}</span>
-            <RefreshCw className={cn('size-3.5', busy && 'animate-spin')} />
-          </button>
-        </div>
+        <h1 className="px-1 text-sm font-medium first-letter:uppercase md:hidden">{formatDay(day, locale, { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
 
         <div className={cn('grid gap-4 md:grid-flow-col md:auto-cols-fr md:items-start md:gap-3', query.isPlaceholderData && 'opacity-60')}>
           {days.map((d) => {
