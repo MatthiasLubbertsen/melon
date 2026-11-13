@@ -1,0 +1,507 @@
+openapi: 3.1.0
+info:
+  title: Melon API
+  version: "1.0"
+  summary: Zermelo school schedules, but intuitive.
+  description: |
+    Melon wraps the Zermelo Portal API in something you can read without a manual.
+
+    **How it fits together**
+
+    - An **account** is one Zermelo account that was linked in the Melon app.
+      Everything hangs off an account: `/accounts/{account}/schedule`.
+    - Every successful response is `{ "data": ..., "meta": ... }`.
+      Every failure is `{ "error": { "code": "...", "message": "..." } }` with a
+      matching HTTP status. Codes are stable; messages are for humans.
+    - Subjects come with readable names (`wi` → `Wiskunde`). Users can rename them.
+    - Times are ISO 8601 with the school's UTC offset (Europe/Amsterdam). Days are `YYYY-MM-DD`.
+
+    **Authentication**
+
+    Create an API key in the app under *Instellingen → Koppelingen* and send it as
+    `Authorization: Bearer melon_sk_...`. A key only sees the accounts you picked
+    for it, and can be revoked at any time. OAuth access tokens issued to MCP
+    clients work the same way.
+
+    **Freshness**
+
+    Schedules change all day, so Melon caches Zermelo's answers for only 30 seconds.
+    `meta.fetchedAt` tells you how old the data is. `meta.stale: true` means Zermelo
+    was unreachable and you are looking at the last known answer. Pass
+    `fresh=true` to skip the cache (a 5 second floor protects Zermelo).
+
+    **Read-only**
+
+    Melon never writes to Zermelo. The only thing you can change is how Melon
+    names subjects.
+servers:
+  - url: /api/v1
+security:
+  - apiKey: []
+tags:
+  - name: Accounts
+    description: The linked Zermelo accounts your credential can use.
+  - name: Schedule
+    description: Lessons, with changes spelled out.
+  - name: People
+    description: Look up other students and teachers (staff accounts only).
+  - name: Subjects
+    description: Readable names for Zermelo's subject codes.
+paths:
+  /accounts:
+    get:
+      tags: [Accounts]
+      operationId: listAccounts
+      summary: List accounts
+      description: Returns the accounts this credential may use.
+      responses:
+        "200":
+          description: The accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Account" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /accounts/{account}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Accounts]
+      operationId: getAccount
+      summary: Get an account
+      responses:
+        "200":
+          description: The account.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Account" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/schedule:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Schedule]
+      operationId: getSchedule
+      summary: Get a schedule
+      description: |
+        Returns the lessons in a date range, sorted by start time. Without any
+        range parameter you get the current week (Monday to Sunday).
+
+        Use either `week`, or `from` and `to`. A range can span at most 42 days.
+
+        Each lesson has a `status`:
+
+        | status      | meaning                                                        |
+        |-------------|----------------------------------------------------------------|
+        | `scheduled` | Happening as planned.                                          |
+        | `changed`   | Happening, but something is different. See `changes`.          |
+        | `cancelled` | Not happening.                                                 |
+      parameters:
+        - name: from
+          in: query
+          description: First day (inclusive). `today` and `tomorrow` also work. Defaults to today when only `to` is given.
+          schema: { type: string, examples: ["2026-11-09"] }
+        - name: to
+          in: query
+          description: Last day (inclusive). Defaults to `from`.
+          schema: { type: string, examples: ["2026-11-13"] }
+        - name: week
+          in: query
+          description: An ISO week, instead of `from`/`to`.
+          schema: { type: string, pattern: '^\d{4}-W\d{2}$', examples: ["2026-W46"] }
+        - name: person
+          in: query
+          description: Code of another student or teacher (see *Search people*). Requires an account with `canViewOthers`.
+          schema: { type: string }
+        - name: changesOnly
+          in: query
+          description: Only return lessons that are changed or cancelled. `summary` still counts everything.
+          schema: { type: boolean, default: false }
+        - $ref: "#/components/parameters/lang"
+        - name: fresh
+          in: query
+          description: Skip Melon's short cache.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: The schedule.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: "#/components/schemas/Schedule" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+              example:
+                data:
+                  person: { code: "100001", name: "Sam de Vries", type: student }
+                  from: "2026-11-12"
+                  to: "2026-11-12"
+                  lessons:
+                    - id: "17941807"
+                      date: "2026-11-12"
+                      start: "2026-11-12T09:20:00+01:00"
+                      end: "2026-11-12T10:10:00+01:00"
+                      period: { from: 2, to: 2 }
+                      type: lesson
+                      title: Geschiedenis
+                      subjects: [{ code: gs, name: Geschiedenis }]
+                      teachers: [dkr]
+                      locations: ["210"]
+                      groups: [3a.gs]
+                      status: changed
+                      changes: [teacher]
+                      changeNote: De docent is gewijzigd (was mul).
+                      note: ""
+                      online: false
+                      optional: false
+                      updatedAt: "2026-11-09T00:00:00+01:00"
+                  summary: { lessons: 6, changed: 2, cancelled: 0 }
+                meta: { fetchedAt: "2026-11-12T08:01:12Z" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/LinkExpired" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "503": { $ref: "#/components/responses/UpstreamRateLimited" }
+  /accounts/{account}/announcements:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Schedule]
+      operationId: listAnnouncements
+      summary: List announcements
+      description: The school's current announcements for this account.
+      responses:
+        "200":
+          description: Current announcements.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Announcement" }
+                  meta: { $ref: "#/components/schemas/Meta" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/LinkExpired" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+  /accounts/{account}/people:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [People]
+      operationId: searchPeople
+      summary: Search people
+      description: |
+        Finds students and teachers by name or code. Only works for accounts with
+        `canViewOthers` (teachers, mentors, admins). Use a result's `code` as the
+        `person` parameter of *Get a schedule*.
+      parameters:
+        - name: q
+          in: query
+          description: Part of a name, or a code. Accents are ignored. Empty returns the first people alphabetically.
+          schema: { type: string, examples: ["van den"] }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+      responses:
+        "200":
+          description: Matching people, best match first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Person" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /subjects:
+    get:
+      tags: [Subjects]
+      operationId: listDefaultSubjects
+      summary: List default subject names
+      description: Melon's built-in map from Zermelo subject codes to readable names. No authentication needed.
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/lang"
+      responses:
+        "200":
+          description: The default map.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Subject" }
+  /accounts/{account}/subjects:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Subjects]
+      operationId: listSubjects
+      summary: List subject names for an account
+      description: The default map with this account's own names applied on top.
+      parameters:
+        - $ref: "#/components/parameters/lang"
+      responses:
+        "200":
+          description: Effective subject names.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/SubjectEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/subjects/{code}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: code
+        in: path
+        required: true
+        description: Zermelo subject code, e.g. `wi`. Case-insensitive.
+        schema: { type: string, maxLength: 32 }
+    put:
+      tags: [Subjects]
+      operationId: renameSubject
+      summary: Rename a subject
+      description: Sets this account's own name for a subject code. Only affects Melon; nothing is written to Zermelo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 80, examples: ["Wiskunde B"] }
+      responses:
+        "200":
+          description: The new name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/SubjectEntry" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Subjects]
+      operationId: resetSubject
+      summary: Reset a subject name
+      description: Removes this account's own name, going back to Melon's default.
+      responses:
+        "204": { description: Reset. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: A Melon API key (`melon_sk_...`) or an OAuth access token (`melon_at_...`).
+  parameters:
+    account:
+      name: account
+      in: path
+      required: true
+      description: Account id, from *List accounts*.
+      schema: { type: string, examples: ["acc_vakhve3jtxkv"] }
+    lang:
+      name: lang
+      in: query
+      description: Language for default subject names.
+      schema: { type: string, enum: [nl, en], default: nl }
+  schemas:
+    Account:
+      type: object
+      required: [id, school, name, role, userCode, canViewOthers]
+      properties:
+        id: { type: string, examples: ["acc_vakhve3jtxkv"] }
+        school: { type: string, description: "Portal name: the part before `.zportal.nl`.", examples: ["jfc"] }
+        name: { type: string, description: Full name of the account's owner., examples: ["Sam de Vries"] }
+        role: { type: string, enum: [student, employee, parent, other] }
+        userCode: { type: string, description: The owner's code in Zermelo., examples: ["100001"] }
+        canViewOthers:
+          type: boolean
+          description: True when this account can see other people's schedules.
+    Person:
+      type: object
+      required: [code, name, type]
+      properties:
+        code: { type: string, examples: ["100003"] }
+        name: { type: string, examples: ["Daan van den Berg"] }
+        type: { type: string, enum: [student, employee] }
+    Subject:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string, examples: ["wi"] }
+        name: { type: string, examples: ["Wiskunde"] }
+    SubjectEntry:
+      allOf:
+        - $ref: "#/components/schemas/Subject"
+        - type: object
+          required: [defaultName, custom]
+          properties:
+            defaultName: { type: string, description: What Melon calls it without the account's own name. }
+            custom: { type: boolean, description: True when the account set its own name. }
+    Schedule:
+      type: object
+      required: [person, from, to, lessons, summary]
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+          description: Whose schedule this is.
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+        lessons:
+          type: array
+          items: { $ref: "#/components/schemas/Lesson" }
+        summary:
+          type: object
+          description: Counts over the whole range, also when `changesOnly` filtered the list.
+          required: [lessons, changed, cancelled]
+          properties:
+            lessons: { type: integer }
+            changed: { type: integer }
+            cancelled: { type: integer }
+    Lesson:
+      type: object
+      required: [id, date, start, end, period, type, title, subjects, teachers, locations, groups, status, changes, changeNote, note, online, optional, updatedAt]
+      properties:
+        id: { type: string }
+        date: { type: string, format: date, description: The school day this lesson is on. }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        period:
+          description: Lesson periods ("lesuren") this spans, or null for things outside the timetable grid.
+          oneOf:
+            - type: "null"
+            - type: object
+              required: [from, to]
+              properties:
+                from: { type: integer }
+                to: { type: integer }
+        type:
+          type: string
+          description: "Zermelo's appointment type. Common values: `lesson`, `exam`, `activity`, `choice`, `talk`, `other`."
+        title: { type: string, description: "A ready-to-show title: the subject names, or the note for activities." }
+        subjects:
+          type: array
+          items: { $ref: "#/components/schemas/Subject" }
+        teachers: { type: array, items: { type: string }, description: Teacher codes. }
+        locations: { type: array, items: { type: string } }
+        groups: { type: array, items: { type: string } }
+        status: { type: string, enum: [scheduled, changed, cancelled] }
+        changes:
+          type: array
+          description: "What is different when `status` is `changed`. `time` means the lesson was moved; `teacher` usually means a substitute."
+          items: { type: string, enum: [teacher, location, group, time] }
+        changeNote: { type: string, description: "Zermelo's own description of the change, in Dutch. May be empty." }
+        note: { type: string, description: "The scheduler's remark, e.g. what an exam covers. May be empty." }
+        online: { type: boolean }
+        onlineUrl: { type: string, description: Present when the lesson has an online meeting link. }
+        optional: { type: boolean }
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the school last modified this lesson.
+    Announcement:
+      type: object
+      required: [id, title, text, start, end]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        text: { type: string }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+    Meta:
+      type: object
+      properties:
+        fetchedAt: { type: string, format: date-time, description: When Melon got this data from Zermelo. }
+        stale: { type: boolean, description: Present and true when Zermelo was unreachable and older data is served. }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable, machine-readable.
+              enum:
+                - invalid_request
+                - unauthorized
+                - forbidden
+                - not_found
+                - person_not_found
+                - account_link_expired
+                - rate_limited
+                - upstream_unavailable
+                - upstream_rate_limited
+                - internal_error
+            message: { type: string, description: For humans. May change. }
+  responses:
+    BadRequest:
+      description: "`invalid_request`: a parameter is missing or malformed. The message says which."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unauthorized:
+      description: "`unauthorized`: missing, wrong or revoked credential."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: "`forbidden`: the Zermelo account is not allowed to see this (for example someone else's schedule)."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: "`not_found` or `person_not_found`: it does not exist, or this credential was not given access to it."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    LinkExpired:
+      description: "`account_link_expired`: Zermelo no longer accepts the account's token. The user has to link the account again in the app."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RateLimited:
+      description: "`rate_limited`: too many requests to Melon. See `Retry-After`."
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds to wait. }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    UpstreamUnavailable:
+      description: "`upstream_unavailable`: Zermelo could not be reached and there is no recent answer to fall back on."
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    UpstreamRateLimited:
+      description: "`upstream_rate_limited`: Zermelo is throttling requests for this school. See `Retry-After`."
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds to wait. }
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
