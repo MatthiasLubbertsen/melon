@@ -72,6 +72,12 @@ type Appointment struct {
 	SchedulerRemark   string   `json:"schedulerRemark"`
 	Content           string   `json:"content"`
 	LastModified      int64    `json:"scheduleLastModified"`
+
+	// Only the /appointments endpoint sends these: it calls the type "type"
+	// and says whether the appointment is real (valid) or hidden.
+	ApptType string `json:"type"`
+	Valid    *bool  `json:"valid"`
+	Hidden   bool   `json:"hidden"`
 }
 
 type Announcement struct {
@@ -90,6 +96,10 @@ type Upstream interface {
 	Users(ctx context.Context, school, token string) ([]User, error)
 	// LiveSchedule returns one ISO week (yyyyWW) for a student or teacher.
 	LiveSchedule(ctx context.Context, school, token, kind, code, week string) ([]Appointment, error)
+	// Appointments returns what one person has between two moments. Teacher
+	// tokens that cannot use LiveSchedule for others (or list users) may still
+	// read this for people they share lessons with, when they know the code.
+	Appointments(ctx context.Context, school, token, code string, from, to time.Time) ([]Appointment, error)
 	Announcements(ctx context.Context, school, token string) ([]Announcement, error)
 }
 
@@ -320,6 +330,30 @@ func (h *HTTP) LiveSchedule(ctx context.Context, school, token, kind, code, week
 		return nil, nil
 	}
 	return out[0].Appointments, nil
+}
+
+// appointmentFields is every field Melon uses that /appointments lets a
+// teacher token read. Asking for one it may not read fails the whole request,
+// so appointmentType, online and scheduleLastModified are left out.
+const appointmentFields = "id,appointmentInstance,start,end,startTimeSlot,endTimeSlot,type,valid,hidden,cancelled,optional,subjects,groups,locations,teachers,onlineLocationUrl,teacherChanged,locationChanged,groupChanged,timeChanged,changeDescription,schedulerRemark,content"
+
+func (h *HTTP) Appointments(ctx context.Context, school, token, code string, from, to time.Time) ([]Appointment, error) {
+	var out []Appointment
+	q := url.Values{"user": {code}, "start": {strconv.FormatInt(from.Unix(), 10)}, "end": {strconv.FormatInt(to.Unix(), 10)}, "fields": {appointmentFields}}
+	if err := h.get(ctx, school, token, "appointments", q, &out); err != nil {
+		return nil, err
+	}
+	kept := out[:0]
+	for _, ap := range out {
+		if ap.Hidden || (ap.Valid != nil && !*ap.Valid) {
+			continue
+		}
+		if ap.Type == "" {
+			ap.Type = ap.ApptType
+		}
+		kept = append(kept, ap)
+	}
+	return kept, nil
 }
 
 func (h *HTTP) Announcements(ctx context.Context, school, token string) ([]Announcement, error) {
