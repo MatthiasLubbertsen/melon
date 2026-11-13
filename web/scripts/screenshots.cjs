@@ -84,6 +84,25 @@ async function main() {
     await page.getByRole('button', { name: 'Toestaan' }).waitFor()
     await page.getByRole('checkbox').first().click()
     await shot(`10-consent-${theme}`)
+
+    // An account: set a PIN, sign out, and sign back in with number + PIN.
+    // This also proves the whole round trip works in a real browser.
+    await page.goto(`${BASE}/settings`)
+    await page.getByRole('button', { name: 'Pincode instellen' }).click()
+    await page.locator('#new-pin').fill('4821')
+    await shot(`13-set-pin-${theme}`)
+    await page.getByRole('button', { name: 'Opslaan' }).click()
+    await page.getByRole('button', { name: 'Uitloggen' }).waitFor()
+    await page.locator('[data-sonner-toast]').waitFor({ state: 'detached' })
+    await shot(`14-settings-signed-in-${theme}`)
+    await page.getByRole('button', { name: 'Uitloggen' }).click()
+    await page.getByRole('alertdialog').or(page.getByRole('dialog')).getByRole('button', { name: 'Uitloggen' }).click()
+    await page.getByRole('button', { name: /Al een Melon-account/ }).click()
+    await page.getByLabel('Gebruikersnummer').fill('100001')
+    await page.getByLabel('Pincode').fill('4821')
+    await shot(`15-sign-in-${theme}`)
+    await page.getByRole('button', { name: 'Inloggen', exact: true }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
     await context.close()
   }
 

@@ -30,7 +30,7 @@ function Section({ title, text, action, children }: { title: string; text?: stri
         </div>
         {action}
       </CardHeader>
-      <CardContent className="grid gap-3">{children}</CardContent>
+      <CardContent className="grid grid-cols-1 gap-3">{children}</CardContent>
     </Card>
   )
 }
@@ -97,27 +97,27 @@ function AccountsTab() {
   return (
     <>
       <Section title={t('accounts')}>
-        <ul className="grid gap-2">
+        <ul className="grid grid-cols-1 gap-2">
           {accounts.map((a) => (
-            <li key={a.id} className="flex items-center gap-3 rounded-xl border p-3">
+            <li key={a.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl border p-3">
               <Avatar name={a.name} className="size-10 text-sm" />
-              <div className="grid min-w-0 flex-1 gap-0.5">
+              <div className="grid min-w-0 gap-0.5">
                 <span className="truncate font-medium">{a.name}</span>
                 <span className="truncate text-sm text-muted-foreground">
                   {a.school}.zportal.nl · {t(a.role)}
                 </span>
-                {a.canViewOthers && (
-                  <Chip tone="honeydew" className="mt-1 w-fit">
-                    <Eye />
-                    {t('canViewOthers')}
-                  </Chip>
-                )}
               </div>
-              <Button variant="destructive" className="h-10 shrink-0" onClick={() => setUnlinking(a)}>
+              <Button variant="destructive" className="h-10 max-sm:w-10 max-sm:px-0" onClick={() => setUnlinking(a)}>
                 <Unplug />
-                <span className="hidden sm:inline">{t('unlink')}</span>
-                <span className="sr-only sm:hidden">{t('unlink')}</span>
+                <span className="max-sm:sr-only">{t('unlink')}</span>
               </Button>
+              {/* Own row: next to the button it does not fit on a phone. */}
+              {a.canViewOthers && (
+                <Chip tone="honeydew" className="col-span-2 col-start-2 w-fit max-w-full shrink">
+                  <Eye className="shrink-0" />
+                  <span className="truncate">{t('canViewOthers')}</span>
+                </Chip>
+              )}
             </li>
           ))}
         </ul>
