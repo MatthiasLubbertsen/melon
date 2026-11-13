@@ -58,7 +58,7 @@ export function SignInForm() {
           name="username"
           value={number}
           onChange={(e) => setNumber(e.target.value)}
-          placeholder="16528"
+          placeholder="12345"
           autoComplete="username"
           autoCapitalize="none"
           autoCorrect="off"

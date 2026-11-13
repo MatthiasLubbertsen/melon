@@ -13,7 +13,7 @@ import (
 )
 
 // Signing in. A profile can be given a sign-in: the user number of one of its
-// own Zermelo accounts (16528, say) plus a four digit PIN. That opens the
+// own Zermelo accounts (12345, say) plus a four digit PIN. That opens the
 // whole profile, with every Zermelo account linked to it, on another device.
 //
 // The number is not a secret and the PIN is short, so the defence is the
