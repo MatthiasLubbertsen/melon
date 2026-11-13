@@ -146,6 +146,9 @@
   html.dark {
     color-scheme: dark;
   }
+  ::selection {
+    @apply bg-primary text-primary-foreground;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     /* The app has its own pull-to-refresh. */

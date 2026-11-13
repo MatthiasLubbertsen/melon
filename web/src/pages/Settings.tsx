@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, BookOpen, CalendarPlus, Eye, KeyRound, Loader2, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
+import { ArrowLeft, BookOpen, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, Chip, ConfirmDialog, CopyField } from '@/components/bits'
 import { LinkDialog } from '@/components/LinkForm'
+import { PinInput } from '@/components/SignInForm'
 import { api, type Account, type ApiKey, type Grant } from '@/lib/api'
 import { useI18n, type Lang } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -29,7 +30,7 @@ function Section({ title, text, action, children }: { title: string; text?: stri
         </div>
         {action}
       </CardHeader>
-      <CardContent className="grid gap-3">{children}</CardContent>
+      <CardContent className="grid grid-cols-1 gap-3">{children}</CardContent>
     </Card>
   )
 }
@@ -71,7 +72,7 @@ const accountNames = (ids: string[], accounts: Account[]) => ids.map((id) => acc
 
 function AccountsTab() {
   const { t } = useI18n()
-  const { accounts, reload } = useSession()
+  const { accounts, reload, swap } = useSession()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [linking, setLinking] = useState(false)
@@ -89,35 +90,34 @@ function AccountsTab() {
   const forget = useMutation({
     mutationFn: api.forget,
     onSuccess: async () => {
-      qc.clear()
-      await reload()
+      await swap()
       navigate('/')
     },
   })
   return (
     <>
       <Section title={t('accounts')}>
-        <ul className="grid gap-2">
+        <ul className="grid grid-cols-1 gap-2">
           {accounts.map((a) => (
-            <li key={a.id} className="flex items-center gap-3 rounded-xl border p-3">
+            <li key={a.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-xl border p-3">
               <Avatar name={a.name} className="size-10 text-sm" />
-              <div className="grid min-w-0 flex-1 gap-0.5">
+              <div className="grid min-w-0 gap-0.5">
                 <span className="truncate font-medium">{a.name}</span>
                 <span className="truncate text-sm text-muted-foreground">
                   {a.school}.zportal.nl · {t(a.role)}
                 </span>
-                {a.canViewOthers && (
-                  <Chip tone="honeydew" className="mt-1 w-fit">
-                    <Eye />
-                    {t('canViewOthers')}
-                  </Chip>
-                )}
               </div>
-              <Button variant="destructive" className="h-10 shrink-0" onClick={() => setUnlinking(a)}>
+              <Button variant="destructive" className="h-10 max-sm:w-10 max-sm:px-0" onClick={() => setUnlinking(a)}>
                 <Unplug />
-                <span className="hidden sm:inline">{t('unlink')}</span>
-                <span className="sr-only sm:hidden">{t('unlink')}</span>
+                <span className="max-sm:sr-only">{t('unlink')}</span>
               </Button>
+              {/* Own row: next to the button it does not fit on a phone. */}
+              {a.canViewOthers && (
+                <Chip tone="honeydew" className="col-span-2 col-start-2 w-fit max-w-full shrink">
+                  <Eye className="shrink-0" />
+                  <span className="truncate">{t('canViewOthers')}</span>
+                </Chip>
+              )}
             </li>
           ))}
         </ul>
@@ -126,6 +126,8 @@ function AccountsTab() {
           {t('linkAnother')}
         </Button>
       </Section>
+
+      <LoginSection />
 
       <Section title={t('forgetTitle')} text={t('forgetText')}>
         <Button variant="destructive" className="h-11 w-fit" onClick={() => setForgetting(true)}>
@@ -146,6 +148,121 @@ function AccountsTab() {
       />
       <ConfirmDialog open={forgetting} onOpenChange={setForgetting} title={t('forgetConfirmTitle')} text={t('forgetText')} confirmLabel={t('forgetConfirm')} busy={forget.isPending} onConfirm={() => forget.mutate()} />
     </>
+  )
+}
+
+/** Number + PIN: what turns this browser's profile into an account you can open anywhere. */
+function LoginSection() {
+  const { t, error } = useI18n()
+  const { session, accounts, reload, swap } = useSession()
+  const navigate = useNavigate()
+  const login = session.login
+  const [editing, setEditing] = useState(false)
+  const [accountId, setAccountId] = useState('')
+  const [pin, setPin] = useState('')
+  const [removing, setRemoving] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+
+  const open = () => {
+    const current = login && accounts.find((a) => a.userCode === login.userId && a.school === login.school)
+    setAccountId((current || accounts[0]).id)
+    setPin('')
+    save.reset()
+    setEditing(true)
+  }
+  const save = useMutation({
+    mutationFn: () => api.setPin(accountId, pin),
+    onSuccess: async (l) => {
+      setEditing(false)
+      await reload()
+      toast.success(t('pinSaved', { number: l.userId }))
+    },
+  })
+  const remove = useMutation({
+    mutationFn: api.clearPin,
+    onSuccess: async () => {
+      setRemoving(false)
+      await reload()
+    },
+  })
+  const signOut = useMutation({
+    mutationFn: api.signOut,
+    onSuccess: async () => {
+      await swap()
+      navigate('/')
+    },
+  })
+
+  return (
+    <Section title={t('loginTitle')} text={login ? undefined : t('loginOff')}>
+      {login && (
+        <p className="flex items-center gap-3 rounded-xl border p-3 text-sm">
+          <KeyRound className="size-5 shrink-0 text-honeydew-ink" />
+          <span>{t('loginOn', { number: login.userId })}</span>
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button variant={login ? 'outline' : 'default'} className="h-11" onClick={open}>
+          <KeyRound />
+          {login ? t('pinChange') : t('pinSet')}
+        </Button>
+        {login && (
+          <>
+            <Button variant="outline" className="h-11" onClick={() => setLeaving(true)}>
+              <LogOut />
+              {t('signOut')}
+            </Button>
+            <Button variant="ghost" className="h-11 text-muted-foreground" onClick={() => setRemoving(true)}>
+              {t('loginRemove')}
+            </Button>
+          </>
+        )}
+      </div>
+
+      <Dialog open={editing} onOpenChange={setEditing}>
+        <DialogContent className="sm:max-w-md">
+          <form
+            className="grid gap-4"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (pin.length === 4 && !save.isPending) save.mutate()
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>{login ? t('pinChange') : t('pinSet')}</DialogTitle>
+              <DialogDescription>{login ? t('pinChangeNote') : t('loginOff')}</DialogDescription>
+            </DialogHeader>
+            {accounts.length > 1 && (
+              <fieldset className="grid gap-1">
+                <legend className="mb-1.5 text-sm font-medium">{t('loginAccount')}</legend>
+                {accounts.map((a) => (
+                  <Label key={a.id} className={cn('flex min-h-11 items-center gap-3 rounded-lg border px-3 font-normal has-focus-visible:ring-3 has-focus-visible:ring-ring/50', a.id === accountId && 'border-honeydew-ink/40 bg-honeydew-tint font-medium text-honeydew-ink')}>
+                    <input type="radio" name="login-account" className="sr-only" checked={a.id === accountId} onChange={() => setAccountId(a.id)} />
+                    <span className="truncate">{a.name}</span>
+                    <span className={cn('ml-auto shrink-0 font-mono text-sm', a.id !== accountId && 'text-muted-foreground')}>{a.userCode}</span>
+                  </Label>
+                ))}
+              </fieldset>
+            )}
+            <div className="grid gap-1.5">
+              <Label htmlFor="new-pin">{t('pin')}</Label>
+              <PinInput id="new-pin" value={pin} onChange={setPin} autoComplete="new-password" autoFocus aria-describedby="new-pin-hint" aria-invalid={save.isError} />
+              <p id="new-pin-hint" className={save.isError ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
+                {save.isError ? error(save.error) : t('pinHint')}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="submit" className="h-11" disabled={pin.length !== 4 || save.isPending}>
+                {save.isPending && <Loader2 className="animate-spin" />}
+                {t('save')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog open={removing} onOpenChange={setRemoving} title={t('loginRemoveTitle')} text={t('loginRemoveText')} confirmLabel={t('loginRemove')} busy={remove.isPending} onConfirm={() => remove.mutate()} />
+      <ConfirmDialog open={leaving} onOpenChange={setLeaving} title={t('signOutTitle')} text={t('signOutText', { number: login?.userId ?? '' })} confirmLabel={t('signOut')} busy={signOut.isPending} onConfirm={() => signOut.mutate()} />
+    </Section>
   )
 }
 

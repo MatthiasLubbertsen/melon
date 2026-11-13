@@ -9,6 +9,8 @@ type SessionState = {
   active: Account | undefined
   setActive: (id: string) => void
   reload: () => Promise<unknown>
+  /** Switch to another profile (after signing in or out): take its session and drop everything cached for the old one. */
+  swap: (next?: Session) => Promise<void>
 }
 
 const Ctx = createContext<SessionState | null>(null)
@@ -34,11 +36,19 @@ export function SessionProvider({ children, fallback }: { children: ReactNode; f
   }, [])
   const reload = useCallback(() => qc.invalidateQueries({ queryKey: ['session'] }), [qc])
 
+  const swap = useCallback(
+    async (next?: Session) => {
+      qc.setQueryData(['session'], next ?? (await api.session()))
+      qc.removeQueries({ predicate: (query) => query.queryKey[0] !== 'session' })
+    },
+    [qc],
+  )
+
   const value = useMemo<SessionState | null>(() => {
     if (!q.data) return null
     const accounts = q.data.accounts
-    return { session: q.data, accounts, active: accounts.find((a) => a.id === activeId) ?? accounts[0], setActive, reload }
-  }, [q.data, activeId, setActive, reload])
+    return { session: q.data, accounts, active: accounts.find((a) => a.id === activeId) ?? accounts[0], setActive, reload, swap }
+  }, [q.data, activeId, setActive, reload, swap])
 
   if (!value) return <>{fallback}</>
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

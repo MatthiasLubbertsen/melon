@@ -197,3 +197,108 @@ func TestMCP(t *testing.T) {
 		t.Fatalf("expected tool error, got %v", body)
 	}
 }
+
+func (c client) fresh() client {
+	jar, _ := cookiejar.New(nil)
+	return client{t: c.t, base: c.base, http: &http.Client{Jar: jar}}
+}
+
+func TestSignInWithPIN(t *testing.T) {
+	c := setup(t)
+	_, body := c.do("POST", "/api/app/demo", "", map[string]any{})
+	student, _ := ids(t, body)
+
+	// Without a PIN, signing out would lose the profile for good.
+	if code, _ := c.do("POST", "/api/app/logout", "", nil); code != 409 {
+		t.Fatalf("sign out without PIN: got %d", code)
+	}
+	for _, pin := range []string{"123", "12345", "12a4", ""} {
+		if code, _ := c.do("PUT", "/api/app/pin", "", map[string]any{"accountId": student, "pin": pin}); code != 400 {
+			t.Fatalf("PIN %q accepted: %d", pin, code)
+		}
+	}
+	code, body := c.do("PUT", "/api/app/pin", "", map[string]any{"accountId": student, "pin": "4821"})
+	if code != 200 {
+		t.Fatalf("set PIN: %d %v", code, body)
+	}
+	number := body["data"].(map[string]any)["userId"].(string)
+	_, body = c.do("GET", "/api/app/session", "", nil)
+	if got := body["data"].(map[string]any)["login"].(map[string]any)["userId"]; got != number {
+		t.Fatalf("session does not show the sign-in: %v", got)
+	}
+
+	// Another device gets the whole profile: both Zermelo accounts.
+	phone := c.fresh()
+	if code, _ := phone.do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "0000"}); code != 401 {
+		t.Fatalf("wrong PIN: got %d", code)
+	}
+	if code, _ := phone.do("POST", "/api/app/login", "", map[string]any{"userId": "999999", "pin": "4821"}); code != 401 {
+		t.Fatalf("unknown number: got %d", code)
+	}
+	code, body = phone.do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "4821"})
+	if code != 200 || len(body["data"].(map[string]any)["accounts"].([]any)) != 2 {
+		t.Fatalf("sign in: %d %v", code, body)
+	}
+	if code, _ := phone.do("GET", "/api/v1/accounts/"+student+"/schedule", "", nil); code != 200 {
+		t.Fatalf("signed-in device cannot read schedule: %d", code)
+	}
+
+	// Signing out keeps the profile; the first device still works.
+	if code, _ := phone.do("POST", "/api/app/logout", "", nil); code != 204 {
+		t.Fatalf("sign out: got %d", code)
+	}
+	if code, _ := phone.do("GET", "/api/v1/accounts", "", nil); code != 401 {
+		t.Fatalf("signed-out device still in: %d", code)
+	}
+	if code, _ := c.do("GET", "/api/v1/accounts", "", nil); code != 200 {
+		t.Fatalf("first device lost its session: %d", code)
+	}
+
+	// Changing the PIN signs other devices out.
+	phone.do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "4821"})
+	c.do("PUT", "/api/app/pin", "", map[string]any{"accountId": student, "pin": "7305"})
+	if code, _ := phone.do("GET", "/api/v1/accounts", "", nil); code != 401 {
+		t.Fatalf("old device survived a PIN change: %d", code)
+	}
+
+	// Linking the same Zermelo account elsewhere never opens this profile.
+	// Setting a PIN there takes over the number instead.
+	thief := c.fresh()
+	_, body = thief.do("POST", "/api/app/demo", "", map[string]any{})
+	theirs, _ := ids(t, body)
+	thief.do("PUT", "/api/app/pin", "", map[string]any{"accountId": theirs, "pin": "1111"})
+	if code, _ := c.fresh().do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "7305"}); code != 401 {
+		t.Fatalf("old PIN still works after takeover: %d", code)
+	}
+	_, body = c.do("GET", "/api/app/session", "", nil)
+	if body["data"].(map[string]any)["login"] != nil {
+		t.Fatal("first profile still claims the number")
+	}
+	if code, _ := c.do("GET", "/api/v1/accounts", "", nil); code != 200 {
+		t.Fatalf("takeover killed the first profile's session: %d", code)
+	}
+}
+
+func TestPINLockout(t *testing.T) {
+	c := setup(t)
+	_, body := c.do("POST", "/api/app/demo", "", map[string]any{})
+	student, _ := ids(t, body)
+	_, body = c.do("PUT", "/api/app/pin", "", map[string]any{"accountId": student, "pin": "4821"})
+	number := body["data"].(map[string]any)["userId"].(string)
+
+	guesser := c.fresh()
+	for i := range store.PINFreeTries {
+		if code, _ := guesser.do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "0000"}); code != 401 {
+			t.Fatalf("guess %d: got %d", i+1, code)
+		}
+	}
+	// Locked now, even for the right PIN.
+	if code, body := guesser.do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "4821"}); code != 429 || body["error"].(map[string]any)["code"] != "login_locked" {
+		t.Fatalf("after lockout: %d %v", code, body)
+	}
+	// A device that is still signed in resets it by choosing a new PIN.
+	c.do("PUT", "/api/app/pin", "", map[string]any{"accountId": student, "pin": "9164"})
+	if code, _ := guesser.do("POST", "/api/app/login", "", map[string]any{"userId": number, "pin": "9164"}); code != 200 {
+		t.Fatalf("sign in after reset: got %d", code)
+	}
+}

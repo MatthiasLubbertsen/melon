@@ -47,7 +47,9 @@ export type TeacherEntry = { code: string; name: string; custom: boolean }
 export type ApiKey = { id: string; name: string; hint: string; accountIds: string[]; createdAt: string; lastUsedAt: string | null; key?: string }
 export type Grant = { id: string; app: string; accountIds: string[]; createdAt: string; lastUsedAt: string | null }
 export type Calendar = { enabled: boolean; url?: string }
-export type Session = { demo: boolean; version: string; defaultSchool: string; accounts: Account[] }
+/** How this profile signs in on other devices: a Zermelo user number, plus a PIN the server keeps. */
+export type Login = { userId: string; school: string }
+export type Session = { demo: boolean; version: string; defaultSchool: string; accounts: Account[]; login: Login | null }
 export type Meta = { fetchedAt?: string; stale?: boolean }
 
 export class ApiError extends Error {
@@ -91,6 +93,10 @@ const qs = (params: Record<string, string | boolean | undefined>) => {
 export const api = {
   session: () => data(request<Session>('GET', '/api/app/session')),
   forget: () => data(request<void>('DELETE', '/api/app/session')),
+  signIn: (userId: string, pin: string) => data(request<Session>('POST', '/api/app/login', { userId, pin })),
+  signOut: () => data(request<void>('POST', '/api/app/logout', {})),
+  setPin: (accountId: string, pin: string) => data(request<Login>('PUT', '/api/app/pin', { accountId, pin })),
+  clearPin: () => data(request<void>('DELETE', '/api/app/pin')),
   link: (body: { school: string; code?: string; token?: string }) => data(request<Account>('POST', '/api/app/accounts', body)),
   demo: () => data(request<Account[]>('POST', '/api/app/demo', {})),
   unlink: (id: string) => data(request<void>('DELETE', `/api/app/accounts/${id}`)),
