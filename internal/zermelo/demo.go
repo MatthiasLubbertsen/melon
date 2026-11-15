@@ -82,6 +82,18 @@ func (d Demo) Users(_ context.Context, _, token string) ([]User, error) {
 	return append(append([]User{}, demoTeachers...), demoStudents...), nil
 }
 
+// Courses gives the demo student one course per demo subject, taught by its teacher.
+func (d Demo) Courses(_ context.Context, _, token string, _ int) ([]Course, error) {
+	if _, err := d.user(token); err != nil {
+		return nil, err
+	}
+	out := make([]Course, len(demoSubjects))
+	for i, s := range demoSubjects {
+		out[i] = Course{ID: int64(i + 1), Teachers: []string{s.teacher}}
+	}
+	return out, nil
+}
+
 func (d Demo) Announcements(_ context.Context, _, token string) ([]Announcement, error) {
 	if _, err := d.user(token); err != nil {
 		return nil, err
@@ -291,4 +303,7 @@ func (r Router) LiveSchedule(ctx context.Context, school, token, kind, code, wee
 }
 func (r Router) Announcements(ctx context.Context, school, token string) ([]Announcement, error) {
 	return r.pick(school).Announcements(ctx, school, token)
+}
+func (r Router) Courses(ctx context.Context, school, token string, schoolYear int) ([]Course, error) {
+	return r.pick(school).Courses(ctx, school, token, schoolYear)
 }
