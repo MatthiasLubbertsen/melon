@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Ban, Clock, DoorOpen, FileText, GraduationCap, MapPin, User, Users, Video } from 'lucide-react'
+import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, MapPin, User, Users, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -103,6 +103,54 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
         {lesson.note && lesson.note !== lesson.title && <span className="truncate text-sm text-muted-foreground">{lesson.note}</span>}
       </span>
     </button>
+  )
+}
+
+/**
+ * Lessons that overlap in time, shown as one card like Zermelo does. Tapping it
+ * expands in place to show every lesson; each one still opens its own details.
+ */
+export function LessonGroup({ lessons, isNow, onOpen }: { lessons: Lesson[]; isNow: (l: Lesson) => boolean; onOpen: (l: Lesson) => void }) {
+  const { t, locale } = useI18n()
+  const [expanded, setExpanded] = useState(false)
+  const start = Math.min(...lessons.map((l) => new Date(l.start).getTime()))
+  const end = Math.max(...lessons.map((l) => new Date(l.end).getTime()))
+  const changed = lessons.some((l) => l.status === 'changed')
+  const cancelled = lessons.every((l) => l.status === 'cancelled')
+  const names = lessons.map((l) => l.title).join(', ')
+  return (
+    <div className="grid gap-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        className={cn(
+          'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+          changed && 'border-cantaloupe/60',
+          lessons.some(isNow) && !cancelled && 'border-honeydew ring-2 ring-honeydew/40',
+        )}
+      >
+        <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1.5', changed ? 'bg-cantaloupe' : lessons.some(isNow) ? 'bg-honeydew' : 'bg-transparent')} />
+        <span className="flex w-11 shrink-0 flex-col items-center justify-center text-center text-[0.7rem] leading-tight text-muted-foreground tabular-nums">
+          {formatTime(new Date(start).toISOString(), locale)}
+          <br />
+          {formatTime(new Date(end).toISOString(), locale)}
+        </span>
+        <span className="grid min-w-0 flex-1 content-center gap-1">
+          <span className="text-base leading-snug font-medium">{t('multiLessons', { n: lessons.length })}</span>
+          <span className="truncate text-sm text-muted-foreground">{names}</span>
+          <span className="sr-only">{t('multiExpand')}</span>
+        </span>
+        <ChevronDown aria-hidden="true" className={cn('size-4 shrink-0 self-center text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+      </button>
+      {expanded && (
+        <div className="grid gap-2 border-l-2 border-border pl-3">
+          {lessons.map((l) => (
+            <LessonCard key={l.id} lesson={l} isNow={isNow(l)} onOpen={() => onOpen(l)} />
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

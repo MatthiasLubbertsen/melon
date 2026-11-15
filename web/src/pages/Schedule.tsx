@@ -7,7 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AccountMenu } from '@/components/AccountMenu'
 import { Banner } from '@/components/bits'
 import { CodeLookup } from '@/components/CodeLookup'
-import { LessonCard, LessonDrawer } from '@/components/Lesson'
+import { LessonCard, LessonDrawer, LessonGroup } from '@/components/Lesson'
+import { groupOverlapping } from '@/lib/groupLessons'
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
 import { PeopleSearch } from '@/components/PeopleSearch'
@@ -270,7 +271,13 @@ export function Schedule() {
                     </div>
                   )
                 ) : (
-                  ls.map((l) => <LessonCard key={l.id} lesson={l} isNow={isNow(l)} onOpen={() => setOpenLesson(l)} />)
+                  groupOverlapping(ls).map((g) =>
+                    g.length === 1 ? (
+                      <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} />
+                    ) : (
+                      <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
+                    ),
+                  )
                 )}
               </section>
             )
