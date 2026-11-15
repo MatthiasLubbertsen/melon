@@ -78,6 +78,31 @@ type Appointment struct {
 	ApptType string `json:"type"`
 	Valid    *bool  `json:"valid"`
 	Hidden   bool   `json:"hidden"`
+
+	// Only the live schedule sends this. On a "conflict" entry (the student is
+	// expected at several lessons at once) it holds those lessons, and the entry
+	// itself is an empty placeholder. On any other entry it lists lessons the
+	// student could swap to, which are not part of the schedule.
+	Actions []struct {
+		Appointment Appointment `json:"appointment"`
+	} `json:"actions"`
+}
+
+// expandConflicts replaces each conflict placeholder with the lessons it stands
+// for, so clashing lessons reach callers as the separate lessons they are.
+// Entries that merely list alternatives are left as they are.
+func expandConflicts(in []Appointment) []Appointment {
+	out := make([]Appointment, 0, len(in))
+	for _, ap := range in {
+		if strings.EqualFold(ap.Type, "conflict") && len(ap.Actions) > 0 {
+			for _, a := range ap.Actions {
+				out = append(out, a.Appointment)
+			}
+			continue
+		}
+		out = append(out, ap)
+	}
+	return out
 }
 
 type Announcement struct {
@@ -329,7 +354,7 @@ func (h *HTTP) LiveSchedule(ctx context.Context, school, token, kind, code, week
 	if len(out) == 0 {
 		return nil, nil
 	}
-	return out[0].Appointments, nil
+	return expandConflicts(out[0].Appointments), nil
 }
 
 // appointmentFields is every field Melon uses that /appointments lets a
