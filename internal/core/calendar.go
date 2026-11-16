@@ -76,14 +76,18 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 	line("X-PUBLISHED-TTL:PT30M")
 	const stamp = "20060102T150405Z"
 	for _, l := range sched.Lessons {
+		// Dropped-out (cancelled) lessons are left out of the feed entirely.
+		// The feed is rebuilt from the schedule on every fetch and covers a
+		// fixed window, so subscribers lose them on refresh, past ones too.
+		if l.Status == "cancelled" {
+			continue
+		}
 		summary := l.Title
 		if len(l.Locations) > 0 {
 			summary += " · " + strings.Join(l.Locations, ", ")
 		}
 		var desc []string
 		switch l.Status {
-		case "cancelled":
-			summary = word("Vervallen: ", "Cancelled: ") + summary
 		case "changed":
 			summary = word("Gewijzigd: ", "Changed: ") + summary
 		}
@@ -123,12 +127,7 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 		if len(desc) > 0 {
 			line("DESCRIPTION:%s", icsText(strings.Join(desc, "\n")))
 		}
-		if l.Status == "cancelled" {
-			line("STATUS:CANCELLED")
-			line("TRANSP:TRANSPARENT")
-		} else {
-			line("STATUS:CONFIRMED")
-		}
+		line("STATUS:CONFIRMED")
 		line("END:VEVENT")
 	}
 	line("END:VCALENDAR")
