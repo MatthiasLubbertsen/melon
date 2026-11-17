@@ -16,13 +16,14 @@ import { useSession } from '@/lib/session'
 /** OAuth consent: an app (usually an AI client via MCP) asks for access. */
 export function Consent() {
   const { t, error } = useI18n()
-  const { accounts } = useSession()
+  const { accounts, session } = useSession()
   const [params] = useSearchParams()
   const clientId = params.get('client_id') ?? ''
   const redirectUri = params.get('redirect_uri') ?? ''
   const state = params.get('state') ?? ''
   const [picked, setPicked] = useState<string[]>([])
   const [signingIn, setSigningIn] = useState(false)
+  const [shareAdmin, setShareAdmin] = useState(false)
 
   // With one account there is nothing to choose; preselect it.
   useEffect(() => {
@@ -40,6 +41,7 @@ export function Consent() {
         codeChallenge: params.get('code_challenge') ?? '',
         codeChallengeMethod: params.get('code_challenge_method') ?? '',
         accountIds: picked,
+        admin: shareAdmin,
       }),
     onSuccess: ({ redirect }) => window.location.assign(redirect),
   })
@@ -94,6 +96,15 @@ export function Consent() {
                 ))}
               </fieldset>
               <p className="text-sm text-muted-foreground">{t('consentCan')}</p>
+              {session.admin && (
+                <Label className="flex min-h-14 items-start gap-3 rounded-xl border px-3 py-3 font-normal has-data-checked:border-cantaloupe has-data-checked:bg-cantaloupe-tint/40">
+                  <Checkbox className="mt-0.5" checked={shareAdmin} onCheckedChange={(on) => setShareAdmin(on === true)} />
+                  <span className="grid gap-0.5 leading-snug">
+                    <span className="font-medium">{t('consentAdmin')}</span>
+                    <span className="text-sm text-muted-foreground">{t('consentAdminHint')}</span>
+                  </span>
+                </Label>
+              )}
               {approve.isError && (
                 <Banner tone="watermelon" icon={<CircleAlert />} title={error(approve.error)} />
               )}

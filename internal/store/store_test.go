@@ -43,8 +43,8 @@ INSERT INTO api_keys VALUES ('key_a', 'usr_a', 'old', 'kh', 'hint', 1, 0);`)
 	if user, by, err := s.Session(ctx, "h", time.Hour); err != nil || user != "usr_a" || by != "" {
 		t.Fatalf("old session: %q %q %v", user, by, err)
 	}
-	if _, sealed, err := s.SealedAPIKey(ctx, "key_a"); err != nil || sealed != nil {
-		t.Fatalf("old key: %v %v", sealed, err)
+	if k, err := s.APIKeyByHash(ctx, "kh"); err != nil || k.UserID != "usr_a" || k.Admin {
+		t.Fatalf("old key: %+v %v", k, err)
 	}
 	// Opening again is a no-op.
 	s.Close()

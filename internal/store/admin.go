@@ -226,29 +226,11 @@ func (s *Store) NameCounts(ctx context.Context, userID string) (subjects, teache
 	return
 }
 
-// SealedAPIKey returns the stored copy of a key, nil for keys made before
-// copies were kept.
-func (s *Store) SealedAPIKey(ctx context.Context, id string) (userID string, sealed []byte, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT user_id, key_enc FROM api_keys WHERE id = ?`, id).Scan(&userID, &sealed)
-	return userID, sealed, one(err)
-}
-
-// StoredAPIKeys reports which of the profile's keys can be shown again.
-func (s *Store) StoredAPIKeys(ctx context.Context, userID string) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM api_keys WHERE user_id = ? AND key_enc IS NOT NULL`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := map[string]bool{}
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		out[id] = true
-	}
-	return out, rows.Err()
+// APIKeyOwner returns the profile a key belongs to.
+func (s *Store) APIKeyOwner(ctx context.Context, id string) (string, error) {
+	var userID string
+	err := s.db.QueryRowContext(ctx, `SELECT user_id FROM api_keys WHERE id = ?`, id).Scan(&userID)
+	return userID, one(err)
 }
 
 // ---- names: global subjects, teachers per school, and what users suggest ----

@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, Eye, KeyRound, Loader2, LockOpen, LogOut, Plus, RotateCcw, Search, ShieldCheck, Trash2 } from 'lucide-react'
+import { ArrowLeft, Check, Eye, KeyRound, Loader2, LockOpen, LogOut, Plus, RotateCcw, Search, ShieldCheck, Stethoscope, Trash2, TriangleAlert, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Avatar, Chip, ConfirmDialog, CopyField } from '@/components/bits'
+import { Avatar, Banner, Chip, ConfirmDialog, CopyField } from '@/components/bits'
 import { PinInput } from '@/components/SignInForm'
-import { api, type AdminOverview, type AdminProfile, type AdminSubject, type Suggestion, type UsageChannel } from '@/lib/api'
+import { api, type AdminAccount, type AdminOverview, type AdminProfile, type AdminSubject, type Suggestion, type UsageChannel } from '@/lib/api'
 import { useDebounced } from '@/lib/hooks'
 import { useI18n, type Key } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -62,7 +62,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   )
 }
 
-const CHANNELS: UsageChannel[] = ['session', 'api_key', 'oauth', 'calendar']
+const CHANNELS: UsageChannel[] = ['session', 'api_key', 'oauth', 'calendar', 'admin']
 
 function days(since: string, today: string): string[] {
   const out: string[] = []
@@ -143,7 +143,7 @@ function Channels({ data }: { data: AdminOverview }) {
   })
   return (
     <Section title={t('usageByChannel')}>
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {totals.map(({ c, lessons, requests }) => (
           <div key={c} className="grid gap-0.5 rounded-xl border p-3">
             <dt className="text-sm text-muted-foreground">{t(`channel_${c}` as Key)}</dt>
@@ -276,7 +276,6 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
   const detail = useQuery({ queryKey: ['admin', 'profile', id], queryFn: () => api.admin.profile(id!), enabled: id !== null })
   const [confirm, setConfirm] = useState<'signout' | 'delete' | 'pin-remove' | null>(null)
   const [pinOpen, setPinOpen] = useState(false)
-  const [revealed, setRevealed] = useState<Record<string, string>>({})
 
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ['admin', 'profile', id] })
@@ -300,14 +299,6 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
       setConfirm(null)
       onClose()
       refresh()
-    },
-    onError,
-  })
-  const reveal = useMutation({
-    mutationFn: (keyId: string) => api.admin.revealKey(keyId),
-    onSuccess: (r, keyId) => {
-      setRevealed((v) => ({ ...v, [keyId]: r.key }))
-      qc.invalidateQueries({ queryKey: ['admin', 'log'] })
     },
     onError,
   })
@@ -358,17 +349,7 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
               <h3 className="text-sm font-medium">{t('accounts')}</h3>
               {p.accounts.length === 0 && <p className="text-sm text-muted-foreground">{t('noAccounts')}</p>}
               {p.accounts.map((a) => (
-                <Row key={a.id}>
-                  <Avatar name={a.name} />
-                  <span className="grid min-w-0 flex-1 leading-tight">
-                    <span className="truncate font-medium">{a.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {a.school} · {t(a.role)} · <span className="font-mono">{a.userCode}</span>
-                    </span>
-                  </span>
-                  {a.canViewOthers && <Chip tone="honeydew">{t('canViewOthers')}</Chip>}
-                  {a.calendar && <Chip tone="cantaloupe">{t('calendarOnShort')}</Chip>}
-                </Row>
+                <AccountRow key={a.id} account={a} />
               ))}
               <p className="text-xs text-muted-foreground">{t('namesCount', { subjects: d.names.subjects, teachers: d.names.teachers })}</p>
             </section>
@@ -408,33 +389,21 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
               <h3 className="text-sm font-medium">{t('keysTitle')}</h3>
               {d.keys.length === 0 && <p className="text-sm text-muted-foreground">{t('keysNone')}</p>}
               {d.keys.map((k) => (
-                <div key={k.id} className="grid gap-2 rounded-xl border p-3">
-                  <div className="flex items-center gap-3">
-                    <span className="grid min-w-0 flex-1 gap-0.5">
+                <Row key={k.id}>
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="flex min-w-0 items-center gap-2">
                       <span className="truncate font-medium">{k.name}</span>
-                      <span className="truncate font-mono text-xs text-muted-foreground">{k.hint}</span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        {accountName(k.accountIds)} · {k.lastUsedAt ? t('lastUsed', { date: f.day(k.lastUsedAt) }) : t('neverUsed')}
-                      </span>
+                      {k.admin && <AdminToolsChip />}
                     </span>
-                    {k.stored && !revealed[k.id] && (
-                      <Button variant="outline" className="h-9 shrink-0" disabled={reveal.isPending} onClick={() => reveal.mutate(k.id)}>
-                        <Eye />
-                        <span className="max-sm:sr-only">{t('keyReveal')}</span>
-                      </Button>
-                    )}
-                    <Button variant="destructive" className="h-9 shrink-0" disabled={revoke.isPending} onClick={() => revoke.mutate(k.id)}>
-                      {t('revoke')}
-                    </Button>
-                  </div>
-                  {!k.stored && <p className="text-xs text-muted-foreground">{t('keyNotStored')}</p>}
-                  {revealed[k.id] && (
-                    <>
-                      <CopyField value={revealed[k.id]} />
-                      <p className="text-xs text-muted-foreground">{t('keyRevealNote')}</p>
-                    </>
-                  )}
-                </div>
+                    <span className="truncate font-mono text-xs text-muted-foreground">{k.hint}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {accountName(k.accountIds)} · {k.lastUsedAt ? t('lastUsed', { date: f.day(k.lastUsedAt) }) : t('neverUsed')}
+                    </span>
+                  </span>
+                  <Button variant="destructive" className="h-9 shrink-0" disabled={revoke.isPending} onClick={() => revoke.mutate(k.id)}>
+                    {t('revoke')}
+                  </Button>
+                </Row>
               ))}
             </section>
 
@@ -444,7 +413,10 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
                 {d.grants.map((g) => (
                   <Row key={g.id}>
                     <span className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="truncate font-medium">{g.app}</span>
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate font-medium">{g.app}</span>
+                        {g.admin && <AdminToolsChip />}
+                      </span>
                       <span className="truncate text-xs text-muted-foreground">{accountName(g.accountIds)}</span>
                     </span>
                   </Row>
@@ -475,6 +447,79 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+function AdminToolsChip() {
+  const { t } = useI18n()
+  return (
+    <Chip tone="cantaloupe">
+      <Wrench />
+      {t('adminToolsChip')}
+    </Chip>
+  )
+}
+
+/** One linked account: what it is, plus a live check with Zermelo and its token. */
+function AccountRow({ account: a }: { account: AdminAccount }) {
+  const { t, error, plural } = useI18n()
+  const f = useFormat()
+  const qc = useQueryClient()
+  const [token, setToken] = useState<string | null>(null)
+  const reveal = useMutation({
+    mutationFn: () => api.admin.zermeloToken(a.id),
+    onSuccess: (r) => {
+      setToken(r.token)
+      qc.invalidateQueries({ queryKey: ['admin', 'log'] })
+    },
+    onError: (e) => toast.error(error(e)),
+  })
+  const check = useMutation({ mutationFn: () => api.admin.checkAccount(a.id), onError: (e) => toast.error(error(e)) })
+  const c = check.data
+  return (
+    <div className="grid gap-2.5 rounded-xl border p-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Avatar name={a.name} />
+        <span className="grid min-w-0 flex-1 leading-tight">
+          <span className="truncate font-medium">{a.name}</span>
+          <span className="truncate text-xs text-muted-foreground">
+            {a.school} · {t(a.role)} · <span className="font-mono">{a.userCode}</span>
+          </span>
+        </span>
+        {a.canViewOthers && <Chip tone="honeydew">{t('canViewOthers')}</Chip>}
+        {a.calendar && <Chip tone="cantaloupe">{t('calendarOnShort')}</Chip>}
+      </div>
+      {a.tokenExpires && <p className="text-xs text-muted-foreground">{t('tokenExpires', { date: f.when(a.tokenExpires) })}</p>}
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" className="h-9" disabled={check.isPending} onClick={() => check.mutate()}>
+          {check.isPending ? <Loader2 className="animate-spin" /> : <Stethoscope />}
+          {t('checkAccount')}
+        </Button>
+        {token === null && (
+          <Button variant="outline" className="h-9" disabled={reveal.isPending} onClick={() => reveal.mutate()}>
+            <Eye />
+            {t('tokenReveal')}
+          </Button>
+        )}
+      </div>
+      {c && (
+        <Banner tone={!c.tokenWorks ? 'watermelon' : c.sameUser ? 'honeydew' : 'cantaloupe'} icon={c.tokenWorks && c.sameUser ? <Check /> : <TriangleAlert />} title={c.tokenWorks ? t('checkOk', { code: c.zermeloUser ?? '' }) : (c.problem ?? '')}>
+          {c.tokenWorks && (
+            <>
+              {c.zermeloName} · {plural('checkSees', Math.max(1, c.usersVisible))}
+              {!c.sameUser && <p className="mt-1 font-medium">{t('checkOtherUser', { code: c.zermeloUser ?? '', stored: a.userCode })}</p>}
+              {c.canListUsers !== c.storedAsWide && <p className="mt-1">{t('checkWideMismatch')}</p>}
+            </>
+          )}
+        </Banner>
+      )}
+      {token !== null && (
+        <>
+          <CopyField value={token} />
+          <p className="text-xs text-muted-foreground">{t('tokenNote')}</p>
+        </>
+      )}
+    </div>
   )
 }
 

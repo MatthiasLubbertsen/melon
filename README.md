@@ -96,8 +96,10 @@ it only counts once it is linked, and linking proves it with Zermelo.
   version first runs.
 - **Users**: search by name, user number, school or profile id. Per profile:
   linked accounts, sign-in and lock status, devices, API keys and connected
-  apps. Set or remove a PIN (for someone who forgot it), lift a PIN lock,
-  sign out everywhere, revoke or show an API key, delete the profile.
+  apps. Check an account with Zermelo right now, show its Zermelo token (the
+  one the link code was exchanged for), set or remove a PIN (for someone who
+  forgot it), lift a PIN lock, sign out everywhere, revoke an API key, delete
+  the profile.
 - **View as a user** opens that profile in your browser for at most two hours,
   with a bar to stop. Your own session comes back when you stop or the time
   runs out. It does not count as the user being active.
@@ -106,7 +108,15 @@ it only counts once it is linked, and linking proves it with Zermelo.
   the staff list). A name the user set, or one from Zermelo, still wins.
   *Suggestions* lists names users gave things themselves that differ from what
   everyone sees, with how many profiles agree; one tap adopts it.
-- **Log**: everything an admin did above, including every shown API key.
+- **Log**: everything an admin did above, including every shown Zermelo token.
+- **For agents (MCP)**: an admin can tick *Beheertools via MCP* when making an
+  API key, or when approving an MCP app. That connection then also gets
+  read-only `admin_*` tools: `admin_overview`, `admin_find_profiles`,
+  `admin_get_profile`, `admin_check_account` (live with Zermelo),
+  `admin_get_schedule` (any account, as its owner sees it), `admin_suggestions`
+  and `admin_get_log`. Reading a schedule or checking an account is logged.
+  Tokens, PINs, viewing as a user and deleting stay in the browser. The tools
+  only work while the profile is still an admin.
 
 ## Design decisions
 
@@ -128,11 +138,10 @@ it only counts once it is linked, and linking proves it with Zermelo.
   there moves the user number to that profile, and the profile that had it
   keeps its data and sessions but has to choose a sign-in again.
 - **Secrets.** Zermelo tokens are AES-256-GCM encrypted, bound to their row, and
-  never leave the server. Sessions and OAuth tokens are stored only as SHA-256
-  hashes. API keys are checked by their hash and shown to their owner once;
-  an encrypted copy is kept so an admin can show it again (logged). Keys made
-  before that copy existed cannot be shown. Calendar feed secrets are encrypted
-  so the URL can be shown again, and can be regenerated.
+  never leave the server, except to an admin who asks for one (logged). API
+  keys, sessions and OAuth tokens are stored only as SHA-256 hashes; a key is
+  shown once. Calendar feed secrets are encrypted so the URL can be shown
+  again, and can be regenerated.
 - **Freshness.** Zermelo answers are cached for 30 seconds (5 second floor on
   manual refresh), concurrent requests are de-duplicated, and each school has
   its own rate limit (4 requests/second, bursts of 8) with back-off on HTTP 429.

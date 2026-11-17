@@ -188,6 +188,8 @@ type apiKeyView struct {
 	AccountIDs []string   `json:"accountIds"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	LastUsedAt *time.Time `json:"lastUsedAt"`
+	// Admin is true when the key may use the admin MCP tools.
+	Admin bool `json:"admin"`
 	// Key is only present in the response that creates it.
 	Key string `json:"key,omitempty"`
 }
@@ -208,7 +210,7 @@ func (s *Server) handleKeys(w http.ResponseWriter, r *http.Request, p core.Princ
 	}
 	out := []apiKeyView{}
 	for _, k := range keys {
-		out = append(out, apiKeyView{ID: k.ID, Name: k.Name, Hint: k.Hint, AccountIDs: k.AccountIDs, CreatedAt: time.Unix(k.CreatedAt, 0).UTC(), LastUsedAt: unixPtr(k.LastUsed)})
+		out = append(out, apiKeyView{ID: k.ID, Name: k.Name, Hint: k.Hint, AccountIDs: k.AccountIDs, CreatedAt: time.Unix(k.CreatedAt, 0).UTC(), LastUsedAt: unixPtr(k.LastUsed), Admin: k.Admin})
 	}
 	writeData(w, out)
 }
@@ -217,6 +219,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, p core.
 	var body struct {
 		Name       string   `json:"name"`
 		AccountIDs []string `json:"accountIds"`
+		Admin      bool     `json:"admin"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
@@ -227,16 +230,22 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, p core.
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "A key needs a name (max 60 characters) and at least one account."))
 		return
 	}
+	if body.Admin {
+		if ok, err := s.isAdmin(r.Context(), p.UserID); err != nil || !ok {
+			writeErr(w, core.Errf(http.StatusForbidden, "forbidden", "Only admins can make a key for the admin tools."))
+			return
+		}
+	}
 	key := secret.Token(apiKeyPrefix)
-	k := store.APIKey{ID: secret.ID("key"), UserID: p.UserID, Name: body.Name, Hint: key[:len(apiKeyPrefix)+4] + "…" + key[len(key)-4:], AccountIDs: body.AccountIDs}
-	if err := s.Store.CreateAPIKey(r.Context(), k, secret.Hash(key), func(id string) []byte { return s.Core.Box.Seal(key, "key:"+id) }); errors.Is(err, store.ErrNotFound) {
+	k := store.APIKey{ID: secret.ID("key"), UserID: p.UserID, Name: body.Name, Hint: key[:len(apiKeyPrefix)+4] + "…" + key[len(key)-4:], AccountIDs: body.AccountIDs, Admin: body.Admin}
+	if err := s.Store.CreateAPIKey(r.Context(), k, secret.Hash(key)); errors.Is(err, store.ErrNotFound) {
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "One of those accounts is not linked to this profile."))
 		return
 	} else if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{"data": apiKeyView{ID: k.ID, Name: k.Name, Hint: k.Hint, AccountIDs: k.AccountIDs, CreatedAt: time.Now().UTC(), Key: key}})
+	writeJSON(w, http.StatusCreated, map[string]any{"data": apiKeyView{ID: k.ID, Name: k.Name, Hint: k.Hint, AccountIDs: k.AccountIDs, CreatedAt: time.Now().UTC(), Admin: k.Admin, Key: key}})
 }
 
 func (s *Server) handleDeleteKey(w http.ResponseWriter, r *http.Request, p core.Principal) {
@@ -260,7 +269,7 @@ func (s *Server) handleGrants(w http.ResponseWriter, r *http.Request, p core.Pri
 	}
 	out := []map[string]any{}
 	for _, g := range grants {
-		out = append(out, map[string]any{"id": g.ID, "app": g.ClientName, "accountIds": g.AccountIDs, "createdAt": time.Unix(g.CreatedAt, 0).UTC(), "lastUsedAt": unixPtr(g.LastUsed)})
+		out = append(out, map[string]any{"id": g.ID, "app": g.ClientName, "accountIds": g.AccountIDs, "createdAt": time.Unix(g.CreatedAt, 0).UTC(), "lastUsedAt": unixPtr(g.LastUsed), "admin": g.Admin})
 	}
 	writeData(w, out)
 }

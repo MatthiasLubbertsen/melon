@@ -87,7 +87,7 @@ func TestAdmin(t *testing.T) {
 		t.Fatalf("usage: %v %v", ov["usage"], ov["totals"])
 	}
 
-	// Find the user, see their key and show it again.
+	// Find the user, check their account with Zermelo and show its token.
 	_, body = admin.do("GET", "/api/app/admin/profiles?q=100001", "", nil)
 	var profile string
 	for _, p := range body["data"].([]any) {
@@ -99,13 +99,17 @@ func TestAdmin(t *testing.T) {
 		t.Fatalf("search did not find the user: %v", body)
 	}
 	_, body = admin.do("GET", "/api/app/admin/profiles/"+profile, "", nil)
-	keys := data(t, body)["keys"].([]any)
-	if len(keys) != 1 || keys[0].(map[string]any)["stored"] != true {
+	if keys := data(t, body)["keys"].([]any); len(keys) != 1 || keys[0].(map[string]any)["key"] != nil {
 		t.Fatalf("keys: %v", keys)
 	}
-	keyID := keys[0].(map[string]any)["id"].(string)
-	if code, body := admin.do("GET", "/api/app/admin/keys/"+keyID+"/secret", "", nil); code != 200 || data(t, body)["key"] != key {
-		t.Fatalf("reveal: %d %v", code, body)
+	if code, body := admin.do("POST", "/api/app/admin/accounts/"+student+"/check", "", nil); code != 200 || data(t, body)["tokenWorks"] != true || data(t, body)["zermeloUser"] != "100001" {
+		t.Fatalf("check: %d %v", code, body)
+	}
+	if code, body := admin.do("GET", "/api/app/admin/accounts/"+student+"/token", "", nil); code != 200 || data(t, body)["token"] != zermelo.DemoStudentToken {
+		t.Fatalf("zermelo token: %d %v", code, body)
+	}
+	if code, _ := user.do("GET", "/api/app/admin/accounts/"+student+"/token", "", nil); code != 403 {
+		t.Fatalf("non-admin read a token: %d", code)
 	}
 
 	// Give the user a PIN they forgot, lock it, unlock it.
@@ -205,7 +209,7 @@ func TestAdmin(t *testing.T) {
 	for _, e := range body["data"].([]any) {
 		actions = append(actions, e.(map[string]any)["action"].(string))
 	}
-	want := "delete_profile,sign_out,set_teacher,set_teacher,set_subject,impersonate,unlock_pin,set_pin,reveal_key"
+	want := "delete_profile,sign_out,set_teacher,set_teacher,set_subject,impersonate,unlock_pin,set_pin,reveal_token"
 	if strings.Join(actions, ",") != want {
 		t.Fatalf("log: %v", actions)
 	}
@@ -230,5 +234,113 @@ func TestImpersonationRunsOut(t *testing.T) {
 	_, body = admin.do("GET", "/api/app/session", "", nil)
 	if d := data(t, body); d["admin"] != true || d["impersonating"] != false || len(d["accounts"].([]any)) != 2 {
 		t.Fatalf("admin not restored: %v", d)
+	}
+}
+
+func mcpCall(t *testing.T, c client, key, tool string, args map[string]any) (map[string]any, bool) {
+	t.Helper()
+	_, body := c.do("POST", "/mcp", key, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": args}})
+	if body["error"] != nil {
+		return nil, false
+	}
+	res := body["result"].(map[string]any)
+	if res["isError"] == true {
+		return res, false
+	}
+	return res["structuredContent"].(map[string]any), true
+}
+
+func TestAdminMCP(t *testing.T) {
+	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
+	_, body := admin.do("POST", "/api/app/demo", "", map[string]any{})
+	own, _ := ids(t, body)
+	user := admin.fresh()
+	_, body = user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	student := data(t, body)["id"].(string)
+
+	// Only admins may make a key for the admin tools, and only on purpose.
+	if code, _ := user.do("POST", "/api/app/keys", "", map[string]any{"name": "x", "accountIds": []string{student}, "admin": true}); code != 403 {
+		t.Fatalf("non-admin made an admin key: %d", code)
+	}
+	_, body = admin.do("POST", "/api/app/keys", "", map[string]any{"name": "plain", "accountIds": []string{own}})
+	plain := data(t, body)["key"].(string)
+	_, body = admin.do("POST", "/api/app/keys", "", map[string]any{"name": "debug", "accountIds": []string{own}, "admin": true})
+	if data(t, body)["admin"] != true {
+		t.Fatalf("admin key: %v", body)
+	}
+	debug := data(t, body)["key"].(string)
+
+	toolNames := func(key string) string {
+		_, body := admin.do("POST", "/mcp", key, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+		var names []string
+		for _, tl := range body["result"].(map[string]any)["tools"].([]any) {
+			names = append(names, tl.(map[string]any)["name"].(string))
+		}
+		return strings.Join(names, ",")
+	}
+	if strings.Contains(toolNames(plain), "admin_") {
+		t.Fatal("a key without the admin opt-in lists admin tools")
+	}
+	if _, ok := mcpCall(t, admin, plain, "admin_overview", nil); ok {
+		t.Fatal("a key without the admin opt-in ran an admin tool")
+	}
+	if !strings.Contains(toolNames(debug), "admin_get_schedule") {
+		t.Fatal("admin key misses admin tools")
+	}
+
+	out, ok := mcpCall(t, admin, debug, "admin_find_profiles", map[string]any{"query": "100001"})
+	if !ok {
+		t.Fatalf("find: %v", out)
+	}
+	var profile string
+	for _, p := range out["profiles"].([]any) {
+		if p.(map[string]any)["admin"] == false {
+			profile = p.(map[string]any)["id"].(string)
+		}
+	}
+	if out, ok := mcpCall(t, admin, debug, "admin_get_profile", map[string]any{"profile": profile}); !ok || len(out["profile"].(map[string]any)["accounts"].([]any)) != 1 {
+		t.Fatalf("profile: %v", out)
+	}
+	if out, ok := mcpCall(t, admin, debug, "admin_check_account", map[string]any{"account": student}); !ok || out["tokenWorks"] != true || out["sameUser"] != true {
+		t.Fatalf("check: %v", out)
+	}
+	// Someone else's schedule, with their own names in it.
+	user.do("PUT", "/api/v1/accounts/"+student+"/teachers/mul", "", map[string]any{"name": "Meester Mulder"})
+	out, ok = mcpCall(t, admin, debug, "admin_get_schedule", map[string]any{"account": student, "week": "2026-W46"})
+	raw, _ := json.Marshal(out)
+	if !ok || !strings.Contains(string(raw), "Meester Mulder") {
+		t.Fatalf("schedule: %s", raw)
+	}
+	if out, ok := mcpCall(t, admin, debug, "admin_overview", nil); !ok || out["stats"].(map[string]any)["profiles"] != 2.0 {
+		t.Fatalf("overview: %v", out)
+	}
+	if _, ok := mcpCall(t, admin, debug, "admin_suggestions", nil); !ok {
+		t.Fatal("suggestions failed")
+	}
+	out, _ = mcpCall(t, admin, debug, "admin_get_log", nil)
+	raw, _ = json.Marshal(out)
+	if !strings.Contains(string(raw), `"action":"read_schedule"`) || !strings.Contains(string(raw), `"action":"check_account"`) {
+		t.Fatalf("log: %s", raw)
+	}
+	// Session-only admin actions are not reachable with the key at all.
+	if code, _ := admin.do("GET", "/api/app/admin/accounts/"+student+"/token", debug, nil); code != 401 {
+		t.Fatalf("admin key read a Zermelo token: %d", code)
+	}
+}
+
+// Taking someone off MELON_ADMINS turns their admin keys into plain keys.
+func TestAdminKeyNeedsAdminStill(t *testing.T) {
+	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
+	_, body := admin.do("POST", "/api/app/demo", "", map[string]any{})
+	student, teacher := ids(t, body)
+	_, body = admin.do("POST", "/api/app/keys", "", map[string]any{"name": "debug", "accountIds": []string{student}, "admin": true})
+	debug := data(t, body)["key"].(string)
+	if _, ok := mcpCall(t, admin, debug, "admin_overview", nil); !ok {
+		t.Fatal("admin key cannot use admin tools")
+	}
+	// Unlinking the admin account is as good as leaving MELON_ADMINS.
+	admin.do("DELETE", "/api/app/accounts/"+teacher, "", nil)
+	if _, ok := mcpCall(t, admin, debug, "admin_overview", nil); ok {
+		t.Fatal("admin tools still work after losing admin")
 	}
 }

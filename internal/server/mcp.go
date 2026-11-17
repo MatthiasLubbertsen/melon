@@ -57,6 +57,8 @@ type mcpArgs struct {
 	Query       string `json:"query"`
 	Code        string `json:"code"`
 	Name        string `json:"name"`
+	Profile     string `json:"profile"`
+	Limit       int    `json:"limit"`
 }
 
 func schema(required []string, props map[string]any) map[string]any {
@@ -309,11 +311,14 @@ func (s *Server) mcpDispatch(ctx context.Context, p core.Principal, req rpcReque
 			"protocolVersion": version,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "melon", "title": "Melon", "version": s.Version},
-			"instructions":    "Melon gives live access to Dutch school schedules from Zermelo. Start with list_accounts. Schedules change often: fetch again rather than relying on earlier results, and always point out cancelled or changed lessons.",
+			"instructions":    mcpInstructions(p),
 		}, nil
 	case "ping":
 		return map[string]any{}, nil
 	case "tools/list":
+		if p.Admin {
+			return map[string]any{"tools": append(append([]mcpTool{}, mcpTools...), adminTools...)}, nil
+		}
 		return map[string]any{"tools": mcpTools}, nil
 	case "tools/call":
 		var params struct {
@@ -323,7 +328,11 @@ func (s *Server) mcpDispatch(ctx context.Context, p core.Principal, req rpcReque
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return nil, &rpcError{-32602, "Invalid params"}
 		}
-		for _, tool := range mcpTools {
+		tools := mcpTools
+		if p.Admin {
+			tools = append(append([]mcpTool{}, mcpTools...), adminTools...)
+		}
+		for _, tool := range tools {
 			if tool.Name != params.Name {
 				continue
 			}
@@ -355,4 +364,12 @@ func (s *Server) mcpDispatch(ctx context.Context, p core.Principal, req rpcReque
 // toolError reports a failure the model can read and act on.
 func toolError(msg string) map[string]any {
 	return map[string]any{"content": []map[string]any{{"type": "text", "text": msg}}, "isError": true}
+}
+
+func mcpInstructions(p core.Principal) string {
+	text := "Melon gives live access to Dutch school schedules from Zermelo. Start with list_accounts. Schedules change often: fetch again rather than relying on earlier results, and always point out cancelled or changed lessons."
+	if p.Admin {
+		text += " This connection also has the admin_* tools, for debugging Melon for any user: start with admin_find_profiles, then admin_get_profile, admin_check_account and admin_get_schedule. They only read; reading a user's schedule or checking their account is written to the admin log."
+	}
+	return text
 }

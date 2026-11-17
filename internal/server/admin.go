@@ -123,8 +123,8 @@ func (s *Server) adminOnly(next handler) http.HandlerFunc {
 	})
 }
 
-func (s *Server) audit(r *http.Request, p core.Principal, action, target, detail string) {
-	if err := s.Store.AddLog(r.Context(), p.UserID, action, target, detail); err != nil {
+func (s *Server) audit(ctx context.Context, p core.Principal, action, target, detail string) {
+	if err := s.Store.AddLog(ctx, p.UserID, action, target, detail); err != nil {
 		// The action itself already happened; say so where an operator looks.
 		slog.Error("cannot write the admin log", "admin", p.UserID, "action", action, "target", target, "err", err)
 	}
@@ -140,7 +140,8 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/app/admin/profiles/{id}/pin", s.adminOnly(s.handleAdminClearPIN))
 	mux.HandleFunc("POST /api/app/admin/profiles/{id}/unlock", s.adminOnly(s.handleAdminUnlock))
 	mux.HandleFunc("DELETE /api/app/admin/profiles/{id}/sessions", s.adminOnly(s.handleAdminSignOut))
-	mux.HandleFunc("GET /api/app/admin/keys/{id}/secret", s.adminOnly(s.handleAdminRevealKey))
+	mux.HandleFunc("GET /api/app/admin/accounts/{id}/token", s.adminOnly(s.handleAdminZermeloToken))
+	mux.HandleFunc("POST /api/app/admin/accounts/{id}/check", s.adminOnly(s.handleAdminCheckAccount))
 	mux.HandleFunc("DELETE /api/app/admin/keys/{id}", s.adminOnly(s.handleAdminDeleteKey))
 	mux.HandleFunc("GET /api/app/admin/subjects", s.adminOnly(s.handleAdminSubjects))
 	mux.HandleFunc("PUT /api/app/admin/subjects/{code}", s.adminOnly(s.handleAdminSetSubject))
@@ -157,41 +158,44 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 // ---- overview ----
 
 func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request, _ core.Principal) {
-	ctx := r.Context()
-	// Show what was counted up to now, not up to the last flush.
-	if err := s.Core.Usage.Flush(ctx, s.Store); err != nil {
-		writeErr(w, err)
-		return
-	}
-	stats, err := s.Store.Stats(ctx)
+	out, err := s.overview(r.Context())
 	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	writeData(w, out)
+}
+
+func (s *Server) overview(ctx context.Context) (map[string]any, error) {
+	// Show what was counted up to now, not up to the last flush.
+	if err := s.Core.Usage.Flush(ctx, s.Store); err != nil {
+		return nil, err
+	}
+	stats, err := s.Store.Stats(ctx)
+	if err != nil {
+		return nil, err
 	}
 	since := s.Core.Today().AddDate(0, 0, -29).Format(time.DateOnly)
 	usage, err := s.Store.UsageSince(ctx, since)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	requests, lessons, err := s.Store.UsageTotal(ctx)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	schools, err := s.Store.Schools(ctx)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
-	writeData(w, map[string]any{
+	return map[string]any{
 		"stats":   stats,
 		"totals":  map[string]int64{"requests": requests, "lessons": lessons},
 		"since":   since,
 		"today":   s.Core.Today().Format(time.DateOnly),
 		"usage":   usage,
 		"schools": schools,
-	})
+	}, nil
 }
 
 // ---- profiles ----
@@ -200,6 +204,8 @@ type adminAccount struct {
 	core.Account
 	Calendar  bool      `json:"calendar"`
 	CreatedAt time.Time `json:"createdAt"`
+	// TokenExpires is when Zermelo said the token stops working, if it said.
+	TokenExpires *time.Time `json:"tokenExpires"`
 }
 
 type adminProfile struct {
@@ -219,9 +225,10 @@ func (s *Server) profileView(p store.ProfileSummary) adminProfile {
 	}
 	for _, a := range p.Accounts {
 		out.Accounts = append(out.Accounts, adminAccount{
-			Account:   core.Account{ID: a.ID, School: a.School, Name: a.DisplayName, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide},
-			Calendar:  a.CalEnc != nil,
-			CreatedAt: time.Unix(a.CreatedAt, 0).UTC(),
+			Account:      core.Account{ID: a.ID, School: a.School, Name: a.DisplayName, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide},
+			Calendar:     a.CalEnc != nil,
+			CreatedAt:    time.Unix(a.CreatedAt, 0).UTC(),
+			TokenExpires: unixPtr(a.TokenExpires),
 		})
 	}
 	return out
@@ -258,10 +265,22 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) (store.ProfileS
 }
 
 func (s *Server) handleAdminProfile(w http.ResponseWriter, r *http.Request, _ core.Principal) {
-	ctx := r.Context()
-	p, ok := s.profile(w, r)
-	if !ok {
+	out, err := s.profileDetail(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
 		return
+	}
+	writeData(w, out)
+}
+
+// profileDetail is everything an admin sees about one profile. Secrets stay
+// out: API keys by hint, Zermelo tokens not at all.
+func (s *Server) profileDetail(ctx context.Context, id string) (map[string]any, error) {
+	p, err := s.Store.Profile(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, core.ErrNotFound
+	} else if err != nil {
+		return nil, err
 	}
 	type lock struct {
 		Fails       int64      `json:"fails"`
@@ -271,8 +290,7 @@ func (s *Server) handleAdminProfile(w http.ResponseWriter, r *http.Request, _ co
 	if p.Login != nil {
 		fails, until, err := s.Store.LoginLock(ctx, p.ID)
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			writeErr(w, err)
-			return
+			return nil, err
 		}
 		pinLock = &lock{Fails: fails}
 		if until > time.Now().Unix() {
@@ -281,49 +299,36 @@ func (s *Server) handleAdminProfile(w http.ResponseWriter, r *http.Request, _ co
 	}
 	sessions, err := s.Store.SessionCount(ctx, p.ID)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	keys, err := s.Store.APIKeys(ctx, p.ID)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
-	stored, err := s.Store.StoredAPIKeys(ctx, p.ID)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	type adminKey struct {
-		apiKeyView
-		Stored bool `json:"stored"`
-	}
-	keyViews := []adminKey{}
+	keyViews := []apiKeyView{}
 	for _, k := range keys {
-		keyViews = append(keyViews, adminKey{apiKeyView{ID: k.ID, Name: k.Name, Hint: k.Hint, AccountIDs: k.AccountIDs, CreatedAt: time.Unix(k.CreatedAt, 0).UTC(), LastUsedAt: unixPtr(k.LastUsed)}, stored[k.ID]})
+		keyViews = append(keyViews, apiKeyView{ID: k.ID, Name: k.Name, Hint: k.Hint, AccountIDs: k.AccountIDs, CreatedAt: time.Unix(k.CreatedAt, 0).UTC(), LastUsedAt: unixPtr(k.LastUsed), Admin: k.Admin})
 	}
 	grants, err := s.Store.OAuthGrants(ctx, p.ID)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	grantViews := []map[string]any{}
 	for _, g := range grants {
-		grantViews = append(grantViews, map[string]any{"id": g.ID, "app": g.ClientName, "accountIds": g.AccountIDs, "createdAt": time.Unix(g.CreatedAt, 0).UTC(), "lastUsedAt": unixPtr(g.LastUsed)})
+		grantViews = append(grantViews, map[string]any{"id": g.ID, "app": g.ClientName, "accountIds": g.AccountIDs, "createdAt": time.Unix(g.CreatedAt, 0).UTC(), "lastUsedAt": unixPtr(g.LastUsed), "admin": g.Admin})
 	}
 	subjectNames, teacherNames, err := s.Store.NameCounts(ctx, p.ID)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
-	writeData(w, map[string]any{
+	return map[string]any{
 		"profile":  s.profileView(p),
 		"pinLock":  pinLock,
 		"sessions": sessions,
 		"keys":     keyViews,
 		"grants":   grantViews,
 		"names":    map[string]int{"subjects": subjectNames, "teachers": teacherNames},
-	})
+	}, nil
 }
 
 func (s *Server) handleAdminDeleteProfile(w http.ResponseWriter, r *http.Request, p core.Principal) {
@@ -342,7 +347,7 @@ func (s *Server) handleAdminDeleteProfile(w http.ResponseWriter, r *http.Request
 	for _, a := range target.Accounts {
 		s.Core.Cache.Drop("acct:" + a.ID + ":")
 	}
-	s.audit(r, p, "delete_profile", target.ID, describe(target))
+	s.audit(r.Context(), p, "delete_profile", target.ID, describe(target))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -380,7 +385,7 @@ func (s *Server) handleImpersonate(w http.ResponseWriter, r *http.Request, p cor
 	// The admin's own session waits here, for the app's API only.
 	http.SetCookie(w, &http.Cookie{Name: adminCookie, Value: own.Value, Path: "/api/app/", MaxAge: int(sessionTTL.Seconds()), HttpOnly: true, Secure: s.isHTTPS(r), SameSite: http.SameSiteStrictMode})
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: token, Path: "/", MaxAge: int(impersonationTTL.Seconds()), HttpOnly: true, Secure: s.isHTTPS(r), SameSite: http.SameSiteLaxMode})
-	s.audit(r, p, "impersonate", target.ID, describe(target))
+	s.audit(r.Context(), p, "impersonate", target.ID, describe(target))
 	out, err := s.sessionBody(r, target.ID, p.UserID)
 	if err != nil {
 		writeErr(w, err)
@@ -470,7 +475,7 @@ func (s *Server) handleAdminSetPIN(w http.ResponseWriter, r *http.Request, p cor
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "set_pin", target.ID, fmt.Sprintf("sign in as %s:%s", acc.School, acc.ZermeloUser))
+	s.audit(r.Context(), p, "set_pin", target.ID, fmt.Sprintf("sign in as %s:%s", acc.School, acc.ZermeloUser))
 	writeData(w, loginView{UserID: l.Name, School: l.School})
 }
 
@@ -483,7 +488,7 @@ func (s *Server) handleAdminClearPIN(w http.ResponseWriter, r *http.Request, p c
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "remove_pin", target.ID, "")
+	s.audit(r.Context(), p, "remove_pin", target.ID, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -496,7 +501,7 @@ func (s *Server) handleAdminUnlock(w http.ResponseWriter, r *http.Request, p cor
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "unlock_pin", target.ID, "")
+	s.audit(r.Context(), p, "unlock_pin", target.ID, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -513,38 +518,27 @@ func (s *Server) handleAdminSignOut(w http.ResponseWriter, r *http.Request, p co
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "sign_out", target.ID, "")
+	s.audit(r.Context(), p, "sign_out", target.ID, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // ---- API keys ----
 
-func (s *Server) handleAdminRevealKey(w http.ResponseWriter, r *http.Request, p core.Principal) {
-	id := r.PathValue("id")
-	owner, sealed, err := s.Store.SealedAPIKey(r.Context(), id)
-	if errors.Is(err, store.ErrNotFound) {
-		writeErr(w, core.ErrNotFound)
-		return
-	} else if err != nil {
+// handleAdminZermeloToken shows the Zermelo token Melon holds for an account
+// (what the link code was exchanged for). Every look is logged.
+func (s *Server) handleAdminZermeloToken(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	a, token, err := s.Core.AnyAccount(r.Context(), r.PathValue("id"))
+	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	if sealed == nil {
-		writeErr(w, core.Errf(http.StatusConflict, "key_not_stored", "This key was made before Melon kept a copy of keys, so it cannot be shown."))
-		return
-	}
-	key, err := s.Core.Box.Open(sealed, "key:"+id)
-	if err != nil {
-		writeErr(w, core.Errf(http.StatusConflict, "key_not_stored", "This key cannot be decrypted; was MELON_SECRET changed?"))
-		return
-	}
-	s.audit(r, p, "reveal_key", owner, id)
-	writeData(w, map[string]string{"key": key})
+	s.audit(r.Context(), p, "reveal_token", a.UserID, fmt.Sprintf("%s (%s:%s)", a.DisplayName, a.School, a.ZermeloUser))
+	writeData(w, map[string]any{"token": token, "school": a.School, "expiresAt": unixPtr(a.TokenExpires)})
 }
 
 func (s *Server) handleAdminDeleteKey(w http.ResponseWriter, r *http.Request, p core.Principal) {
 	id := r.PathValue("id")
-	owner, _, err := s.Store.SealedAPIKey(r.Context(), id)
+	owner, err := s.Store.APIKeyOwner(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		writeErr(w, core.ErrNotFound)
 		return
@@ -556,7 +550,7 @@ func (s *Server) handleAdminDeleteKey(w http.ResponseWriter, r *http.Request, p 
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "revoke_key", owner, id)
+	s.audit(r.Context(), p, "revoke_key", owner, id)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -619,7 +613,7 @@ func (s *Server) handleAdminSetSubject(w http.ResponseWriter, r *http.Request, p
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "set_subject", code, body.NL+" / "+body.EN)
+	s.audit(r.Context(), p, "set_subject", code, body.NL+" / "+body.EN)
 	writeData(w, store.GlobalSubject{Code: code, NL: body.NL, EN: body.EN})
 }
 
@@ -632,7 +626,7 @@ func (s *Server) handleAdminDeleteSubject(w http.ResponseWriter, r *http.Request
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "reset_subject", code, "")
+	s.audit(r.Context(), p, "reset_subject", code, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -684,7 +678,7 @@ func (s *Server) handleAdminSetTeacher(w http.ResponseWriter, r *http.Request, p
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "set_teacher", school+":"+code, body.Name)
+	s.audit(r.Context(), p, "set_teacher", school+":"+code, body.Name)
 	writeData(w, core.Teacher{Code: code, Name: body.Name})
 }
 
@@ -701,7 +695,7 @@ func (s *Server) handleAdminDeleteTeacher(w http.ResponseWriter, r *http.Request
 		writeErr(w, err)
 		return
 	}
-	s.audit(r, p, "reset_teacher", school+":"+code, "")
+	s.audit(r.Context(), p, "reset_teacher", school+":"+code, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -709,15 +703,23 @@ func (s *Server) handleAdminDeleteTeacher(w http.ResponseWriter, r *http.Request
 // accounts that differ from what everyone gets now: candidates for a global
 // subject name or a school's teacher name.
 func (s *Server) handleAdminSuggestions(w http.ResponseWriter, r *http.Request, _ core.Principal) {
-	ctx := r.Context()
-	type suggestion struct {
-		store.Suggestion
-		Current string `json:"current"`
-	}
-	globalRows, err := s.Store.GlobalSubjects(ctx)
+	out, err := s.suggestions(r.Context())
 	if err != nil {
 		writeErr(w, err)
 		return
+	}
+	writeData(w, out)
+}
+
+type suggestion struct {
+	store.Suggestion
+	Current string `json:"current"`
+}
+
+func (s *Server) suggestions(ctx context.Context) (map[string]any, error) {
+	globalRows, err := s.Store.GlobalSubjects(ctx)
+	if err != nil {
+		return nil, err
 	}
 	global := map[string]subjects.Name{}
 	for _, g := range globalRows {
@@ -725,8 +727,7 @@ func (s *Server) handleAdminSuggestions(w http.ResponseWriter, r *http.Request, 
 	}
 	subjectRows, err := s.Store.SubjectSuggestions(ctx)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	subjectOut := []suggestion{}
 	for _, sg := range subjectRows {
@@ -738,8 +739,7 @@ func (s *Server) handleAdminSuggestions(w http.ResponseWriter, r *http.Request, 
 	}
 	teacherRows, err := s.Store.TeacherSuggestions(ctx)
 	if err != nil {
-		writeErr(w, err)
-		return
+		return nil, err
 	}
 	perSchool := map[string]map[string]string{}
 	teacherOut := []suggestion{}
@@ -747,8 +747,7 @@ func (s *Server) handleAdminSuggestions(w http.ResponseWriter, r *http.Request, 
 		names, ok := perSchool[sg.School]
 		if !ok {
 			if names, err = s.Store.SchoolTeachers(ctx, sg.School); err != nil {
-				writeErr(w, err)
-				return
+				return nil, err
 			}
 			perSchool[sg.School] = names
 		}
@@ -758,26 +757,34 @@ func (s *Server) handleAdminSuggestions(w http.ResponseWriter, r *http.Request, 
 		}
 		teacherOut = append(teacherOut, suggestion{sg, cur})
 	}
-	writeData(w, map[string]any{"subjects": subjectOut, "teachers": teacherOut})
+	return map[string]any{"subjects": subjectOut, "teachers": teacherOut}, nil
 }
 
 // ---- audit log ----
 
 func (s *Server) handleAdminLog(w http.ResponseWriter, r *http.Request, _ core.Principal) {
-	ctx := r.Context()
-	rows, err := s.Store.Log(ctx, 200)
+	out, err := s.adminLog(r.Context(), 200)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	writeData(w, out)
+}
+
+type logEntry struct {
+	store.LogEntry
+	At        time.Time `json:"at"`
+	AdminName string    `json:"adminName"`
+}
+
+func (s *Server) adminLog(ctx context.Context, limit int) ([]logEntry, error) {
+	rows, err := s.Store.Log(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
 	// Name admins by their first account; ids alone are hard to read.
 	names := map[string]string{}
-	type entry struct {
-		store.LogEntry
-		At        time.Time `json:"at"`
-		AdminName string    `json:"adminName"`
-	}
-	out := []entry{}
+	out := []logEntry{}
 	for _, e := range rows {
 		name, ok := names[e.Admin]
 		if !ok {
@@ -786,7 +793,27 @@ func (s *Server) handleAdminLog(w http.ResponseWriter, r *http.Request, _ core.P
 			}
 			names[e.Admin] = name
 		}
-		out = append(out, entry{e, time.Unix(e.At, 0).UTC(), name})
+		out = append(out, logEntry{e, time.Unix(e.At, 0).UTC(), name})
+	}
+	return out, nil
+}
+
+// stillAdmin re-checks MELON_ADMINS for a credential that opted in to the
+// admin tools, so taking someone off the list takes effect at once.
+func (s *Server) stillAdmin(r *http.Request, userID string) bool {
+	ok, err := s.isAdmin(r.Context(), userID)
+	if err != nil {
+		slog.Warn("cannot check whether the profile is an admin", "err", err)
+	}
+	return ok
+}
+
+// handleAdminCheckAccount asks Zermelo, live, whether the account still works.
+func (s *Server) handleAdminCheckAccount(w http.ResponseWriter, r *http.Request, _ core.Principal) {
+	out, err := s.Core.CheckAccount(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
 	writeData(w, out)
 }

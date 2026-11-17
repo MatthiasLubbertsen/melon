@@ -46,6 +46,9 @@ type Principal struct {
 	// All grants every account of the user (browser sessions only).
 	All        bool
 	AccountIDs []string
+	// Admin is set when the credential opted in to the admin tools and its
+	// profile is an admin right now.
+	Admin bool
 }
 
 func (p Principal) allows(id string) bool {

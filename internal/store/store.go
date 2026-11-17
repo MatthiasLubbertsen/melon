@@ -114,8 +114,10 @@ CREATE TABLE IF NOT EXISTS admin_log (
 var columns = []struct{ table, name, ddl string }{
 	// Set for sessions an admin opened as someone else; they never slide.
 	{"sessions", "impersonator", "TEXT"},
-	// API keys made from this version on, sealed so an admin can show them again.
-	{"api_keys", "key_enc", "BLOB"},
+	// Set on keys and app authorizations an admin made to reach the admin
+	// MCP tools. Only counts while the profile is still an admin.
+	{"api_keys", "admin", "INTEGER NOT NULL DEFAULT 0"},
+	{"oauth_grants", "admin", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 func Open(dataDir string) (*Store, error) {
@@ -389,6 +391,11 @@ func (s *Store) Account(ctx context.Context, userID, id string) (Account, error)
 	return scanAccount(s.db.QueryRowContext(ctx, `SELECT `+accountCols+` FROM accounts WHERE user_id = ? AND id = ?`, userID, id))
 }
 
+// AccountByID loads any account, whoever owns it. Admin use only.
+func (s *Store) AccountByID(ctx context.Context, id string) (Account, error) {
+	return scanAccount(s.db.QueryRowContext(ctx, `SELECT `+accountCols+` FROM accounts WHERE id = ?`, id))
+}
+
 func (s *Store) AccountByCalendar(ctx context.Context, calHash string) (Account, error) {
 	return scanAccount(s.db.QueryRowContext(ctx, `SELECT `+accountCols+` FROM accounts WHERE cal_hash = ?`, calHash))
 }
@@ -475,17 +482,17 @@ type APIKey struct {
 	CreatedAt  int64
 	LastUsed   int64
 	AccountIDs []string
+	// Admin opts the key in to the admin MCP tools.
+	Admin bool
 }
 
-// CreateAPIKey stores a key by its hash, plus seal(id): the key encrypted
-// for that row, so an admin can show it again.
-func (s *Store) CreateAPIKey(ctx context.Context, k APIKey, keyHash string, seal func(id string) []byte) error {
+func (s *Store) CreateAPIKey(ctx context.Context, k APIKey, keyHash string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO api_keys (id, user_id, name, key_hash, hint, created_at, key_enc) VALUES (?,?,?,?,?,?,?)`, k.ID, k.UserID, k.Name, keyHash, k.Hint, now(), seal(k.ID)); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO api_keys (id, user_id, name, key_hash, hint, created_at, admin) VALUES (?,?,?,?,?,?,?)`, k.ID, k.UserID, k.Name, keyHash, k.Hint, now(), k.Admin); err != nil {
 		return err
 	}
 	for _, a := range k.AccountIDs {
@@ -499,7 +506,7 @@ func (s *Store) CreateAPIKey(ctx context.Context, k APIKey, keyHash string, seal
 }
 
 func (s *Store) APIKeys(ctx context.Context, userID string) ([]APIKey, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT k.id, k.user_id, k.name, k.hint, k.created_at, k.last_used, COALESCE(GROUP_CONCAT(a.account_id), '')
+	rows, err := s.db.QueryContext(ctx, `SELECT k.id, k.user_id, k.name, k.hint, k.created_at, k.last_used, k.admin, COALESCE(GROUP_CONCAT(a.account_id), '')
 		FROM api_keys k LEFT JOIN api_key_accounts a ON a.key_id = k.id WHERE k.user_id = ? GROUP BY k.id ORDER BY k.created_at DESC`, userID)
 	if err != nil {
 		return nil, err
@@ -509,7 +516,7 @@ func (s *Store) APIKeys(ctx context.Context, userID string) ([]APIKey, error) {
 	for rows.Next() {
 		var k APIKey
 		var ids string
-		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.Hint, &k.CreatedAt, &k.LastUsed, &ids); err != nil {
+		if err := rows.Scan(&k.ID, &k.UserID, &k.Name, &k.Hint, &k.CreatedAt, &k.LastUsed, &k.Admin, &ids); err != nil {
 			return nil, err
 		}
 		k.AccountIDs = split(ids)
@@ -522,8 +529,8 @@ func (s *Store) APIKeys(ctx context.Context, userID string) ([]APIKey, error) {
 func (s *Store) APIKeyByHash(ctx context.Context, keyHash string) (APIKey, error) {
 	var k APIKey
 	var ids string
-	err := s.db.QueryRowContext(ctx, `SELECT k.id, k.user_id, k.name, k.last_used, COALESCE(GROUP_CONCAT(a.account_id), '')
-		FROM api_keys k LEFT JOIN api_key_accounts a ON a.key_id = k.id WHERE k.key_hash = ? GROUP BY k.id`, keyHash).Scan(&k.ID, &k.UserID, &k.Name, &k.LastUsed, &ids)
+	err := s.db.QueryRowContext(ctx, `SELECT k.id, k.user_id, k.name, k.last_used, k.admin, COALESCE(GROUP_CONCAT(a.account_id), '')
+		FROM api_keys k LEFT JOIN api_key_accounts a ON a.key_id = k.id WHERE k.key_hash = ? GROUP BY k.id`, keyHash).Scan(&k.ID, &k.UserID, &k.Name, &k.LastUsed, &k.Admin, &ids)
 	if err != nil {
 		return k, one(err)
 	}
@@ -569,6 +576,8 @@ type OAuthGrant struct {
 	CreatedAt  int64
 	LastUsed   int64
 	AccountIDs []string
+	// Admin opts the app in to the admin MCP tools.
+	Admin bool
 }
 
 // CreateOAuthGrant records the user's consent and the one-time code for it.
@@ -578,7 +587,7 @@ func (s *Store) CreateOAuthGrant(ctx context.Context, g OAuthGrant, codeHash, re
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO oauth_grants (id, user_id, client_id, created_at) VALUES (?,?,?,?)`, g.ID, g.UserID, g.ClientID, now()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO oauth_grants (id, user_id, client_id, created_at, admin) VALUES (?,?,?,?,?)`, g.ID, g.UserID, g.ClientID, now(), g.Admin); err != nil {
 		return err
 	}
 	for _, a := range g.AccountIDs {
@@ -617,9 +626,9 @@ func (s *Store) CreateOAuthToken(ctx context.Context, tokenHash, grantID, kind s
 func (s *Store) OAuthGrantByToken(ctx context.Context, tokenHash, kind string) (OAuthGrant, error) {
 	var g OAuthGrant
 	var ids string
-	err := s.db.QueryRowContext(ctx, `SELECT g.id, g.user_id, g.client_id, g.last_used, COALESCE(GROUP_CONCAT(a.account_id), '')
+	err := s.db.QueryRowContext(ctx, `SELECT g.id, g.user_id, g.client_id, g.last_used, g.admin, COALESCE(GROUP_CONCAT(a.account_id), '')
 		FROM oauth_tokens t JOIN oauth_grants g ON g.id = t.grant_id LEFT JOIN oauth_grant_accounts a ON a.grant_id = g.id
-		WHERE t.token_hash = ? AND t.kind = ? AND t.expires_at > ? GROUP BY g.id`, tokenHash, kind, now()).Scan(&g.ID, &g.UserID, &g.ClientID, &g.LastUsed, &ids)
+		WHERE t.token_hash = ? AND t.kind = ? AND t.expires_at > ? GROUP BY g.id`, tokenHash, kind, now()).Scan(&g.ID, &g.UserID, &g.ClientID, &g.LastUsed, &g.Admin, &ids)
 	if err != nil {
 		return g, one(err)
 	}
@@ -637,7 +646,7 @@ func (s *Store) DeleteOAuthToken(ctx context.Context, tokenHash string) error {
 
 func (s *Store) OAuthGrants(ctx context.Context, userID string) ([]OAuthGrant, error) {
 	// Grants whose code was never redeemed have no tokens and are not shown.
-	rows, err := s.db.QueryContext(ctx, `SELECT g.id, g.client_id, c.name, g.created_at, g.last_used, COALESCE(GROUP_CONCAT(a.account_id), '')
+	rows, err := s.db.QueryContext(ctx, `SELECT g.id, g.client_id, c.name, g.created_at, g.last_used, g.admin, COALESCE(GROUP_CONCAT(a.account_id), '')
 		FROM oauth_grants g JOIN oauth_clients c ON c.id = g.client_id LEFT JOIN oauth_grant_accounts a ON a.grant_id = g.id
 		WHERE g.user_id = ? AND EXISTS (SELECT 1 FROM oauth_tokens t WHERE t.grant_id = g.id AND t.expires_at > ?)
 		GROUP BY g.id ORDER BY g.created_at DESC`, userID, now())
@@ -649,7 +658,7 @@ func (s *Store) OAuthGrants(ctx context.Context, userID string) ([]OAuthGrant, e
 	for rows.Next() {
 		g := OAuthGrant{UserID: userID}
 		var ids string
-		if err := rows.Scan(&g.ID, &g.ClientID, &g.ClientName, &g.CreatedAt, &g.LastUsed, &ids); err != nil {
+		if err := rows.Scan(&g.ID, &g.ClientID, &g.ClientName, &g.CreatedAt, &g.LastUsed, &g.Admin, &ids); err != nil {
 			return nil, err
 		}
 		g.AccountIDs = split(ids)

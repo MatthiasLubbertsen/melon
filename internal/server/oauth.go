@@ -158,6 +158,7 @@ func (s *Server) handleOAuthApprove(w http.ResponseWriter, r *http.Request, p co
 		CodeChallengeMethod string   `json:"codeChallengeMethod"`
 		ResponseType        string   `json:"responseType"`
 		AccountIDs          []string `json:"accountIds"`
+		Admin               bool     `json:"admin"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
@@ -191,8 +192,14 @@ func (s *Server) handleOAuthApprove(w http.ResponseWriter, r *http.Request, p co
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "Choose at least one account to share."))
 		return
 	}
+	if body.Admin {
+		if ok, err := s.isAdmin(r.Context(), p.UserID); err != nil || !ok {
+			writeErr(w, core.Errf(http.StatusForbidden, "forbidden", "Only admins can share the admin tools."))
+			return
+		}
+	}
 	code := secret.Token("")
-	g := store.OAuthGrant{ID: secret.ID("grant"), UserID: p.UserID, ClientID: c.ID, AccountIDs: body.AccountIDs}
+	g := store.OAuthGrant{ID: secret.ID("grant"), UserID: p.UserID, ClientID: c.ID, AccountIDs: body.AccountIDs, Admin: body.Admin}
 	if err := s.Store.CreateOAuthGrant(r.Context(), g, secret.Hash(code), body.RedirectURI, body.CodeChallenge, codeTTL); errors.Is(err, store.ErrNotFound) {
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "One of those accounts is not linked to this profile."))
 		return

@@ -264,13 +264,13 @@ func (s *Server) principal(r *http.Request) (core.Principal, error) {
 			if err != nil {
 				return core.Principal{}, unauthorized
 			}
-			return core.Principal{UserID: k.UserID, Kind: "api_key", AccountIDs: k.AccountIDs}, nil
+			return core.Principal{UserID: k.UserID, Kind: "api_key", AccountIDs: k.AccountIDs, Admin: k.Admin && s.stillAdmin(r, k.UserID)}, nil
 		case strings.HasPrefix(token, accessPrefix):
 			g, err := s.Store.OAuthGrantByToken(r.Context(), secret.Hash(token), "access")
 			if err != nil {
 				return core.Principal{}, unauthorized
 			}
-			return core.Principal{UserID: g.UserID, Kind: "oauth", AccountIDs: g.AccountIDs}, nil
+			return core.Principal{UserID: g.UserID, Kind: "oauth", AccountIDs: g.AccountIDs, Admin: g.Admin && s.stillAdmin(r, g.UserID)}, nil
 		}
 		return core.Principal{}, unauthorized
 	}
