@@ -51,30 +51,30 @@ func TestWeekStart(t *testing.T) {
 }
 
 func TestSubjectResolve(t *testing.T) {
-	if n, _ := subjects.Resolve("WI", "nl", nil); n != "Wiskunde" {
+	if n, _ := subjects.Resolve("WI", "nl", nil, nil); n != "Wiskunde" {
 		t.Errorf("wi: %q", n)
 	}
-	if n, _ := subjects.Resolve("wi2", "en", nil); n != "Mathematics" {
+	if n, _ := subjects.Resolve("wi2", "en", nil, nil); n != "Mathematics" {
 		t.Errorf("wi2: %q", n)
 	}
-	if n, _ := subjects.Resolve("wi", "nl", map[string]string{"wi": "Wis B"}); n != "Wis B" {
+	if n, _ := subjects.Resolve("wi", "nl", map[string]string{"wi": "Wis B"}, nil); n != "Wis B" {
 		t.Errorf("override: %q", n)
 	}
-	if n, known := subjects.Resolve("xyz", "nl", nil); n != "xyz" || known {
+	if n, known := subjects.Resolve("xyz", "nl", nil, nil); n != "xyz" || known {
 		t.Errorf("unknown: %q %v", n, known)
 	}
 }
 
 func TestChangeStatus(t *testing.T) {
 	loc := time.UTC
-	l := toLesson(zermelo.Appointment{ID: 1, Subjects: []string{"wi"}, TeacherChanged: true, TimeChanged: true, Teachers: []string{"DKR", "xyz"}}, loc, "nl", nil, map[string]string{"dkr": "M. Dekker"})
+	l := toLesson(zermelo.Appointment{ID: 1, Subjects: []string{"wi"}, TeacherChanged: true, TimeChanged: true, Teachers: []string{"DKR", "xyz"}}, loc, "nl", nil, nil, map[string]string{"dkr": "M. Dekker"})
 	if len(l.Teachers) != 2 || l.Teachers[0].Name != "M. Dekker" || l.Teachers[1].Name != "xyz" {
 		t.Errorf("teacher names: %+v", l.Teachers)
 	}
 	if l.Status != "changed" || strings.Join(l.Changes, ",") != "teacher,time" {
 		t.Errorf("changed: %+v", l)
 	}
-	l = toLesson(zermelo.Appointment{ID: 1, Cancelled: true, LocationChanged: true}, loc, "nl", nil, nil)
+	l = toLesson(zermelo.Appointment{ID: 1, Cancelled: true, LocationChanged: true}, loc, "nl", nil, nil, nil)
 	if l.Status != "cancelled" {
 		t.Errorf("cancelled must win: %+v", l)
 	}
@@ -95,11 +95,11 @@ func TestNameTeachers(t *testing.T) {
 	// Only a changed teacher makes the note worth rewriting.
 	loc := time.UTC
 	ap := zermelo.Appointment{ChangeDescription: "Het lokaal was 112.", LocationChanged: true}
-	if got := toLesson(ap, loc, "nl", nil, names).ChangeNote; got != "Het lokaal was 112." {
+	if got := toLesson(ap, loc, "nl", nil, nil, names).ChangeNote; got != "Het lokaal was 112." {
 		t.Errorf("room change rewritten: %q", got)
 	}
 	ap = zermelo.Appointment{ChangeDescription: "Nu ozt, eerst dkr.", TeacherChanged: true}
-	if got := toLesson(ap, loc, "nl", nil, names).ChangeNote; got != "Nu ozt, eerst Mevrouw Dekker." {
+	if got := toLesson(ap, loc, "nl", nil, nil, names).ChangeNote; got != "Nu ozt, eerst Mevrouw Dekker." {
 		t.Errorf("teacher change: %q", got)
 	}
 }

@@ -2,13 +2,11 @@ package server
 
 import (
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/matthiaslubbertsen/melon/internal/core"
-	"github.com/matthiaslubbertsen/melon/internal/subjects"
 )
 
 func lang(r *http.Request) string {
@@ -151,12 +149,11 @@ func (s *Server) handleAnnouncements(w http.ResponseWriter, r *http.Request, p c
 }
 
 func (s *Server) handleDefaultSubjects(w http.ResponseWriter, r *http.Request) {
-	out := []core.Subject{}
-	for code := range subjects.Defaults {
-		name, _ := subjects.Resolve(code, lang(r), nil)
-		out = append(out, core.Subject{Code: code, Name: name})
+	out, err := s.Core.DefaultSubjects(r.Context(), lang(r))
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
 	writeData(w, out)
 }
 
@@ -182,7 +179,11 @@ func (s *Server) handleSetSubject(w http.ResponseWriter, r *http.Request, p core
 		writeErr(w, err)
 		return
 	}
-	def, _ := subjects.Resolve(code, lang(r), nil)
+	def, err := s.Core.DefaultSubjectName(r.Context(), code, lang(r))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
 	writeData(w, core.SubjectEntry{Code: code, Name: strings.TrimSpace(body.Name), DefaultName: def, Custom: true})
 }
 

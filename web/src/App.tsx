@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
+import { ImpersonationBar } from '@/components/ImpersonationBar'
 import { Logo } from '@/components/Logo'
 import { I18nProvider } from '@/lib/i18n'
 import { SessionProvider, useSession } from '@/lib/session'
@@ -12,6 +13,7 @@ import { Settings } from '@/pages/Settings'
 import { Welcome } from '@/pages/Welcome'
 
 const Docs = lazy(() => import('@/pages/Docs'))
+const Admin = lazy(() => import('@/pages/Admin'))
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } })
 
@@ -33,6 +35,11 @@ function NeedsAccount({ children }: { children: React.ReactNode }) {
   return active ? <>{children}</> : <Navigate to="/" replace />
 }
 
+function NeedsAdmin({ children }: { children: React.ReactNode }) {
+  const { session } = useSession()
+  return session.admin ? <>{children}</> : <Navigate to="/" replace />
+}
+
 export default function App() {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
@@ -46,9 +53,11 @@ export default function App() {
                   <Route path="/settings" element={<NeedsAccount><Settings /></NeedsAccount>} />
                   <Route path="/oauth/authorize" element={<Consent />} />
                   <Route path="/docs" element={<Docs />} />
+                  <Route path="/admin" element={<NeedsAdmin><Admin /></NeedsAdmin>} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </Suspense>
+              <ImpersonationBar />
             </SessionProvider>
           </BrowserRouter>
           <Toaster position="top-center" />

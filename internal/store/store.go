@@ -91,7 +91,32 @@ CREATE TABLE IF NOT EXISTS oauth_tokens (
   grant_id TEXT NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,
   kind TEXT NOT NULL, expires_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS global_subjects (
+  code TEXT PRIMARY KEY, nl TEXT NOT NULL, en TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS school_teachers (
+  school TEXT NOT NULL, code TEXT NOT NULL, name TEXT NOT NULL, updated_at INTEGER NOT NULL,
+  PRIMARY KEY (school, code)
+);
+CREATE TABLE IF NOT EXISTS usage_daily (
+  day TEXT NOT NULL, channel TEXT NOT NULL,
+  requests INTEGER NOT NULL DEFAULT 0, lessons INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (day, channel)
+);
+CREATE TABLE IF NOT EXISTS admin_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL,
+  admin TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT ''
+);
 `
+
+// columns are added to tables that existed before them. CREATE TABLE above
+// cannot do that for a database made by an older version.
+var columns = []struct{ table, name, ddl string }{
+	// Set for sessions an admin opened as someone else; they never slide.
+	{"sessions", "impersonator", "TEXT"},
+	// API keys made from this version on, sealed so an admin can show them again.
+	{"api_keys", "key_enc", "BLOB"},
+}
 
 func Open(dataDir string) (*Store, error) {
 	dsn := "file:" + filepath.Join(dataDir, "melon.db") + "?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
@@ -102,6 +127,17 @@ func Open(dataDir string) (*Store, error) {
 	db.SetMaxOpenConns(1) // SQLite: one writer; keeps things simple and safe.
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
+	}
+	for _, c := range columns {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, c.table, c.name).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.name + ` ` + c.ddl); err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &Store{db: db}, nil
 }
@@ -135,23 +171,38 @@ func (s *Store) CreateUser(ctx context.Context, id string) error {
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions VALUES (?, ?, ?, ?, ?)`,
+	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions (token_hash, user_id, created_at, last_seen, expires_at) VALUES (?, ?, ?, ?, ?)`,
 		tokenHash, userID, now(), now(), time.Now().Add(ttl).Unix())
 	return err
 }
 
-// SessionUser resolves a session and slides its expiry.
+// SessionUser resolves a session and slides its expiry. Sessions an admin
+// opened as someone else keep their short, fixed expiry.
 func (s *Store) SessionUser(ctx context.Context, tokenHash string, ttl time.Duration) (string, error) {
-	var user string
+	user, _, err := s.Session(ctx, tokenHash, ttl)
+	return user, err
+}
+
+// Session is SessionUser that also says which admin, if any, opened it.
+func (s *Store) Session(ctx context.Context, tokenHash string, ttl time.Duration) (user, impersonator string, err error) {
 	var lastSeen int64
-	err := s.db.QueryRowContext(ctx, `SELECT user_id, last_seen FROM sessions WHERE token_hash = ? AND expires_at > ?`, tokenHash, now()).Scan(&user, &lastSeen)
+	var imp sql.NullString
+	err = s.db.QueryRowContext(ctx, `SELECT user_id, last_seen, impersonator FROM sessions WHERE token_hash = ? AND expires_at > ?`, tokenHash, now()).Scan(&user, &lastSeen, &imp)
 	if err != nil {
-		return "", one(err)
+		return "", "", one(err)
 	}
-	if now()-lastSeen > 3600 {
+	if now()-lastSeen > 3600 && !imp.Valid {
 		_, _ = s.db.ExecContext(ctx, `UPDATE sessions SET last_seen = ?, expires_at = ? WHERE token_hash = ?`, now(), time.Now().Add(ttl).Unix(), tokenHash)
 	}
-	return user, nil
+	return user, imp.String, nil
+}
+
+// CreateImpersonation opens a session on userID for an admin. It lasts ttl
+// and does not slide.
+func (s *Store) CreateImpersonation(ctx context.Context, tokenHash, userID, admin string, ttl time.Duration) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions (token_hash, user_id, created_at, last_seen, expires_at, impersonator) VALUES (?, ?, ?, ?, ?, ?)`,
+		tokenHash, userID, now(), now(), time.Now().Add(ttl).Unix(), admin)
+	return err
 }
 
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
@@ -162,6 +213,12 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 // DeleteUser removes a profile and, by cascade, everything it owns.
 func (s *Store) DeleteUser(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	return err
+}
+
+// DeleteSessions signs the profile out everywhere.
+func (s *Store) DeleteSessions(ctx context.Context, userID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, userID)
 	return err
 }
 
@@ -420,13 +477,15 @@ type APIKey struct {
 	AccountIDs []string
 }
 
-func (s *Store) CreateAPIKey(ctx context.Context, k APIKey, keyHash string) error {
+// CreateAPIKey stores a key by its hash, plus seal(id): the key encrypted
+// for that row, so an admin can show it again.
+func (s *Store) CreateAPIKey(ctx context.Context, k APIKey, keyHash string, seal func(id string) []byte) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO api_keys (id, user_id, name, key_hash, hint, created_at) VALUES (?,?,?,?,?,?)`, k.ID, k.UserID, k.Name, keyHash, k.Hint, now()); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO api_keys (id, user_id, name, key_hash, hint, created_at, key_enc) VALUES (?,?,?,?,?,?,?)`, k.ID, k.UserID, k.Name, keyHash, k.Hint, now(), seal(k.ID)); err != nil {
 		return err
 	}
 	for _, a := range k.AccountIDs {

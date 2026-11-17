@@ -85,16 +85,26 @@ func run() error {
 		defaultSchool = school
 	}
 
+	admins, err := server.ParseAdmins(env("MELON_ADMINS", ""), defaultSchool)
+	if err != nil {
+		return fmt.Errorf("MELON_ADMINS: %w", err)
+	}
+	for _, school := range admins.Schools() {
+		if school == zermelo.DemoSchool {
+			slog.Warn("MELON_ADMINS names a demo account: anyone who opens the demo is an admin. Only do this on a throwaway server.")
+		}
+	}
+
 	up := zermelo.Router{Real: zermelo.NewHTTP()}
 	if demo {
 		up.Demo = zermelo.Demo{Loc: loc}
 	}
-	svc := &core.Service{Store: db, Up: up, Cache: zermelo.NewCache(), Box: box, Loc: loc, Demo: demo}
+	svc := &core.Service{Store: db, Up: up, Cache: zermelo.NewCache(), Box: box, Loc: loc, Demo: demo, Usage: core.NewUsage()}
 	srv := &server.Server{
 		Core: svc, Store: db,
 		PublicURL:  strings.TrimRight(env("MELON_PUBLIC_URL", ""), "/"),
 		TrustProxy: truthy("MELON_TRUST_PROXY"),
-		Demo:       demo, Version: version, DefaultSchool: defaultSchool,
+		Demo:       demo, Version: version, DefaultSchool: defaultSchool, Admins: admins,
 		Static: web.Dist(), OpenAPI: api.OpenAPI,
 	}
 	httpServer := &http.Server{
@@ -111,9 +121,10 @@ func run() error {
 		defer cancel()
 		_ = httpServer.Shutdown(shutdown)
 	}()
-	slog.Info("melon is listening", "addr", addr, "demo", demo, "version", version)
+	slog.Info("melon is listening", "addr", addr, "demo", demo, "version", version, "admins", admins.Count())
 	if err := httpServer.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
-	return nil
+	// Keep the last minute of usage counts.
+	return svc.Usage.Flush(context.Background(), db)
 }

@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, BookOpen, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
+import { ArrowLeft, BookOpen, ShieldCheck, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -667,6 +667,7 @@ function NamesTab() {
 
 export function Settings() {
   const { t } = useI18n()
+  const { session } = useSession()
   const [tab, setTab] = useState('accounts')
   return (
     <div className="mx-auto min-h-dvh w-full max-w-2xl px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6">
@@ -674,7 +675,13 @@ export function Settings() {
         <Button variant="ghost" size="icon" className="size-11" aria-label={t('back')} render={<Link to="/" />}>
           <ArrowLeft className="size-5" />
         </Button>
-        <h1 className="text-xl font-semibold">{t('settings')}</h1>
+        <h1 className="flex-1 text-xl font-semibold">{t('settings')}</h1>
+        {session.admin && (
+          <Button variant="outline" className="h-10" render={<Link to="/admin" />}>
+            <ShieldCheck />
+            {t('admin')}
+          </Button>
+        )}
       </header>
       <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
         <TabsList className="h-11 w-full">

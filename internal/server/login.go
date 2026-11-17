@@ -81,7 +81,7 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, err)
 			return
 		}
-		out, err := s.sessionBody(r, l.UserID)
+		out, err := s.sessionBody(r, l.UserID, "")
 		if err != nil {
 			writeErr(w, err)
 			return

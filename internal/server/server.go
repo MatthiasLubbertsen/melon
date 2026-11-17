@@ -43,8 +43,10 @@ type Server struct {
 	// DefaultSchool prefills the school field when linking; users can change it.
 	DefaultSchool string
 	Version       string
-	Static        fs.FS  // built web app
-	OpenAPI       []byte // openapi.yaml
+	// Admins may open the admin dashboard (MELON_ADMINS).
+	Admins  Admins
+	Static  fs.FS  // built web app
+	OpenAPI []byte // openapi.yaml
 
 	limitMu  sync.Mutex
 	limiters map[string]*clientLimiter
@@ -58,6 +60,7 @@ type clientLimiter struct {
 func (s *Server) Handler() http.Handler {
 	s.limiters = map[string]*clientLimiter{}
 	go s.janitor()
+	go s.flushUsage()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok\n")) })
@@ -100,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /api/app/grants/{id}", s.sessionOnly(s.handleDeleteGrant))
 	mux.HandleFunc("GET /api/app/oauth/request", s.handleOAuthRequest)
 	mux.HandleFunc("POST /api/app/oauth/approve", s.sessionOnly(s.handleOAuthApprove))
+	s.adminRoutes(mux)
 
 	// OAuth 2.1 authorization server (for MCP clients).
 	for _, suffix := range []string{"", "/mcp"} {
@@ -201,6 +205,15 @@ func (s *Server) janitor() {
 	}
 }
 
+// flushUsage moves the schedule counters to the database once a minute.
+func (s *Server) flushUsage() {
+	for range time.Tick(time.Minute) {
+		if err := s.Core.Usage.Flush(context.Background(), s.Store); err != nil {
+			slog.Warn("cannot save usage counters", "err", err)
+		}
+	}
+}
+
 func (s *Server) clientIP(r *http.Request) string {
 	if s.TrustProxy {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
@@ -271,12 +284,22 @@ func (s *Server) principal(r *http.Request) (core.Principal, error) {
 }
 
 func (s *Server) sessionUser(r *http.Request) (string, bool) {
+	user, _ := s.sessionInfo(r)
+	return user, user != ""
+}
+
+// sessionInfo resolves the session cookie to its profile and, when an admin
+// opened it as that profile, the admin's profile.
+func (s *Server) sessionInfo(r *http.Request) (user, impersonator string) {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || c.Value == "" {
-		return "", false
+		return "", ""
 	}
-	user, err := s.Store.SessionUser(r.Context(), secret.Hash(c.Value), sessionTTL)
-	return user, err == nil
+	user, impersonator, err = s.Store.Session(r.Context(), secret.Hash(c.Value), sessionTTL)
+	if err != nil {
+		return "", ""
+	}
+	return user, impersonator
 }
 
 // sameOrigin rejects cookie-authenticated requests that another site

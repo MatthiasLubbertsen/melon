@@ -15,8 +15,13 @@ import (
 // handleSession tells the web app what it is working with. It never fails
 // for anonymous visitors; they simply have no accounts yet.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	user, _ := s.sessionUser(r)
-	out, err := s.sessionBody(r, user)
+	user, by := s.sessionInfo(r)
+	if user == "" {
+		// Viewing as someone else ran out (or that profile was removed):
+		// back to the admin's own session.
+		user = s.restoreAdmin(w, r)
+	}
+	out, err := s.sessionBody(r, user, by)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -24,10 +29,19 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	writeData(w, out)
 }
 
-func (s *Server) sessionBody(r *http.Request, user string) (map[string]any, error) {
-	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}, "login": nil}
+// sessionBody describes the profile to the web app. by is the admin viewing
+// it as its owner, if any.
+func (s *Server) sessionBody(r *http.Request, user, by string) (map[string]any, error) {
+	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}, "login": nil, "admin": false, "impersonating": false}
 	if user == "" {
 		return out, nil
+	}
+	if by != "" {
+		out["impersonating"] = true
+	} else if ok, err := s.isAdmin(r.Context(), user); err != nil {
+		return nil, err
+	} else {
+		out["admin"] = ok
 	}
 	accounts, err := s.Core.Accounts(r.Context(), core.Principal{UserID: user, All: true})
 	if err != nil {
@@ -215,7 +229,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, p core.
 	}
 	key := secret.Token(apiKeyPrefix)
 	k := store.APIKey{ID: secret.ID("key"), UserID: p.UserID, Name: body.Name, Hint: key[:len(apiKeyPrefix)+4] + "…" + key[len(key)-4:], AccountIDs: body.AccountIDs}
-	if err := s.Store.CreateAPIKey(r.Context(), k, secret.Hash(key)); errors.Is(err, store.ErrNotFound) {
+	if err := s.Store.CreateAPIKey(r.Context(), k, secret.Hash(key), func(id string) []byte { return s.Core.Box.Seal(key, "key:"+id) }); errors.Is(err, store.ErrNotFound) {
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "One of those accounts is not linked to this profile."))
 		return
 	} else if err != nil {
