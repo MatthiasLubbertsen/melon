@@ -115,22 +115,40 @@ var Defaults = map[string]Name{
 
 var trailingDigits = regexp.MustCompile(`[0-9]+$`)
 
+// Lookup finds the built-in or global name for a code, also trying it without
+// a trailing level digit. Global names (set by an admin) win over built-in
+// ones; a global name without English borrows the built-in English one.
+func Lookup(code string, global map[string]Name) (Name, bool) {
+	key := strings.ToLower(strings.TrimSpace(code))
+	for _, k := range []string{key, trailingDigits.ReplaceAllString(key, "")} {
+		g, gok := global[k]
+		d, dok := Defaults[k]
+		switch {
+		case gok:
+			if g.EN == "" {
+				g.EN = d.EN
+			}
+			return g, true
+		case dok:
+			return d, true
+		}
+	}
+	return Name{}, false
+}
+
 // Resolve finds the readable name for a code: the user's override first, then
-// the defaults (also trying the code without a trailing level digit, so "wi2"
-// reads as "Wiskunde"), and finally the code itself.
-func Resolve(code, lang string, overrides map[string]string) (name string, known bool) {
+// the global and built-in names (also trying the code without a trailing level
+// digit, so "wi2" reads as "Wiskunde"), and finally the code itself.
+func Resolve(code, lang string, overrides map[string]string, global map[string]Name) (name string, known bool) {
 	key := strings.ToLower(strings.TrimSpace(code))
 	if n, ok := overrides[key]; ok {
 		return n, true
 	}
-	n, ok := Defaults[key]
-	if !ok {
-		n, ok = Defaults[trailingDigits.ReplaceAllString(key, "")]
-	}
+	n, ok := Lookup(key, global)
 	if !ok {
 		return code, false
 	}
-	if lang == "en" {
+	if lang == "en" && n.EN != "" {
 		return n.EN, true
 	}
 	return n.NL, true

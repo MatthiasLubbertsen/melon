@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, BookOpen, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
+import { ArrowLeft, BookOpen, ShieldCheck, Wrench, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -334,23 +334,25 @@ function CalendarSection() {
 
 function KeysSection() {
   const { t, locale } = useI18n()
-  const { accounts } = useSession()
+  const { accounts, session } = useSession()
   const qc = useQueryClient()
   const keys = useQuery({ queryKey: ['keys'], queryFn: api.keys })
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [picked, setPicked] = useState<string[]>([])
+  const [adminTools, setAdminTools] = useState(false)
   const [created, setCreated] = useState<ApiKey | null>(null)
   const [revoking, setRevoking] = useState<ApiKey | null>(null)
 
   const open = () => {
     setName('')
     setPicked(accounts.length === 1 ? [accounts[0].id] : [])
+    setAdminTools(false)
     setCreated(null)
     setCreating(true)
   }
   const create = useMutation({
-    mutationFn: () => api.createKey(name, picked),
+    mutationFn: () => api.createKey(name, picked, adminTools),
     onSuccess: (key) => {
       setCreated(key)
       qc.invalidateQueries({ queryKey: ['keys'] })
@@ -384,7 +386,15 @@ function KeysSection() {
             <KeyRound className="size-5 shrink-0 text-muted-foreground" />
             <div className="grid min-w-0 flex-1 gap-0.5">
               <span className="truncate font-medium">{k.name}</span>
-              <span className="truncate font-mono text-xs text-muted-foreground">{k.hint}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-mono text-xs text-muted-foreground">{k.hint}</span>
+                {k.admin && (
+                  <Chip tone="cantaloupe">
+                    <Wrench />
+                    {t('adminToolsChip')}
+                  </Chip>
+                )}
+              </span>
               <span className="truncate text-sm text-muted-foreground">
                 {accountNames(k.accountIds, accounts) || '–'} · {k.lastUsedAt ? t('lastUsed', { date: date(k.lastUsedAt) }) : t('neverUsed')}
               </span>
@@ -440,6 +450,15 @@ function KeysSection() {
                   </Label>
                 ))}
               </fieldset>
+              {session.admin && (
+                <Label className="flex items-start gap-3 rounded-lg border px-3 py-3 font-normal has-data-checked:border-cantaloupe has-data-checked:bg-cantaloupe-tint/40">
+                  <Checkbox className="mt-0.5" checked={adminTools} onCheckedChange={(on) => setAdminTools(on === true)} />
+                  <span className="grid gap-0.5 leading-snug">
+                    <span className="font-medium">{t('keyAdmin')}</span>
+                    <span className="text-sm text-muted-foreground">{t('keyAdminHint')}</span>
+                  </span>
+                </Label>
+              )}
               <DialogFooter>
                 <Button type="submit" className="h-11" disabled={!name.trim() || picked.length === 0 || create.isPending}>
                   {create.isPending && <Loader2 className="animate-spin" />}
@@ -485,7 +504,15 @@ function AppsSection() {
         {grants.data?.map((g) => (
           <li key={g.id} className="flex items-center gap-3 rounded-xl border p-3">
             <div className="grid min-w-0 flex-1 gap-0.5">
-              <span className="truncate font-medium">{g.app}</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate font-medium">{g.app}</span>
+                {g.admin && (
+                  <Chip tone="cantaloupe">
+                    <Wrench />
+                    {t('adminToolsChip')}
+                  </Chip>
+                )}
+              </span>
               <span className="truncate text-sm text-muted-foreground">{accountNames(g.accountIds, accounts) || '–'}</span>
             </div>
             <Button variant="destructive" className="h-10 shrink-0" onClick={() => setRevoking(g)}>
@@ -667,6 +694,7 @@ function NamesTab() {
 
 export function Settings() {
   const { t } = useI18n()
+  const { session } = useSession()
   const [tab, setTab] = useState('accounts')
   return (
     <div className="mx-auto min-h-dvh w-full max-w-2xl px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6">
@@ -674,7 +702,13 @@ export function Settings() {
         <Button variant="ghost" size="icon" className="size-11" aria-label={t('back')} render={<Link to="/" />}>
           <ArrowLeft className="size-5" />
         </Button>
-        <h1 className="text-xl font-semibold">{t('settings')}</h1>
+        <h1 className="flex-1 text-xl font-semibold">{t('settings')}</h1>
+        {session.admin && (
+          <Button variant="outline" className="h-10" render={<Link to="/admin" />}>
+            <ShieldCheck />
+            {t('admin')}
+          </Button>
+        )}
       </header>
       <Tabs value={tab} onValueChange={(v) => setTab(String(v))} className="gap-4">
         <TabsList className="h-11 w-full">

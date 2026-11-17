@@ -51,8 +51,15 @@ func (c client) do(method, path, bearer string, body any) (int, map[string]any) 
 	return res.StatusCode, out
 }
 
-func setup(t *testing.T) client {
+func setup(t *testing.T) client { t.Helper(); return setupAdmins(t, "") }
+
+// setupAdmins starts a demo server with MELON_ADMINS set to admins.
+func setupAdmins(t *testing.T, admins string) client {
 	t.Helper()
+	adm, err := ParseAdmins(admins, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	db, err := store.Open(dir)
 	if err != nil {
@@ -61,8 +68,8 @@ func setup(t *testing.T) client {
 	t.Cleanup(func() { db.Close() })
 	box, _ := secret.NewBox([]byte("test-secret-test-secret"))
 	loc, _ := time.LoadLocation("Europe/Amsterdam")
-	svc := &core.Service{Store: db, Up: zermelo.Router{Real: zermelo.Demo{Loc: loc}, Demo: zermelo.Demo{Loc: loc}}, Cache: zermelo.NewCache(), Box: box, Loc: loc, Demo: true}
-	srv := &Server{Core: svc, Store: db, Demo: true, Version: "test", Static: fstest.MapFS{"index.html": {Data: []byte("app")}}}
+	svc := &core.Service{Store: db, Up: zermelo.Router{Real: zermelo.Demo{Loc: loc}, Demo: zermelo.Demo{Loc: loc}}, Cache: zermelo.NewCache(), Box: box, Loc: loc, Demo: true, Usage: core.NewUsage()}
+	srv := &Server{Core: svc, Store: db, Demo: true, Version: "test", Admins: adm, Static: fstest.MapFS{"index.html": {Data: []byte("app")}}}
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	jar, _ := cookiejar.New(nil)

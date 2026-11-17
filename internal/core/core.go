@@ -46,6 +46,9 @@ type Principal struct {
 	// All grants every account of the user (browser sessions only).
 	All        bool
 	AccountIDs []string
+	// Admin is set when the credential opted in to the admin tools and its
+	// profile is an admin right now.
+	Admin bool
 }
 
 func (p Principal) allows(id string) bool {
@@ -67,6 +70,8 @@ type Service struct {
 	Box   *secret.Box
 	Loc   *time.Location
 	Demo  bool
+	// Usage counts schedule traffic for the admin overview; nil counts nothing.
+	Usage *Usage
 }
 
 const (
@@ -534,6 +539,10 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 	if err != nil {
 		return Schedule{}, err
 	}
+	global, err := s.globalSubjects(ctx)
+	if err != nil {
+		return Schedule{}, err
+	}
 	teachers, _, err := s.teacherNames(ctx, a, token)
 	if err != nil {
 		return Schedule{}, err
@@ -591,7 +600,7 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 			if start.Before(q.From) || !start.Before(end) {
 				continue
 			}
-			out.Lessons = append(out.Lessons, toLesson(ap, s.Loc, q.Lang, overrides, teachers))
+			out.Lessons = append(out.Lessons, toLesson(ap, s.Loc, q.Lang, overrides, global, teachers))
 		}
 	}
 	sort.SliceStable(out.Lessons, func(i, j int) bool {
@@ -602,10 +611,11 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 		// Within one slot, show what is happening before what was cancelled.
 		return a.Status != "cancelled" && b.Status == "cancelled"
 	})
+	s.Usage.Record(time.Now().In(s.Loc), p.Kind, len(out.Lessons))
 	return out, nil
 }
 
-func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides, teachers map[string]string) Lesson {
+func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides map[string]string, global map[string]subjects.Name, teachers map[string]string) Lesson {
 	start := time.Unix(ap.Start, 0).In(loc)
 	l := Lesson{
 		ID:         fmt.Sprint(ap.ID),
@@ -643,7 +653,7 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 	}
 	var names []string
 	for _, code := range dedupe(ap.Subjects) {
-		name, _ := subjects.Resolve(code, lang, overrides)
+		name, _ := subjects.Resolve(code, lang, overrides, global)
 		l.Subjects = append(l.Subjects, Subject{Code: code, Name: name})
 		names = append(names, name)
 	}
@@ -759,15 +769,19 @@ func (s *Service) Announcements(ctx context.Context, p Principal, accountID stri
 
 // ---- teachers ----
 
-// teacherNames maps lowercase teacher codes to names: the school's staff list
-// when the account can see it, with the account's own names on top. custom
-// holds the codes the account named itself.
+// teacherNames maps lowercase teacher codes to names: what an admin set for
+// the school, then the school's staff list when the account can see it, with
+// the account's own names on top. custom holds the codes the account named
+// itself.
 func (s *Service) teacherNames(ctx context.Context, a store.Account, token string) (names map[string]string, custom map[string]string, err error) {
 	custom, err = s.Store.TeacherNames(ctx, a.ID)
 	if err != nil {
 		return nil, nil, err
 	}
-	names = map[string]string{}
+	names, err = s.Store.SchoolTeachers(ctx, a.School)
+	if err != nil {
+		return nil, nil, err
+	}
 	if a.Wide {
 		// Best effort: a schedule without full names beats no schedule.
 		if users, err := s.directory(ctx, a, token); err == nil {
@@ -836,6 +850,10 @@ func (s *Service) Subjects(ctx context.Context, p Principal, accountID, lang str
 	if err != nil {
 		return nil, err
 	}
+	global, err := s.globalSubjects(ctx)
+	if err != nil {
+		return nil, err
+	}
 	seen := map[string]bool{}
 	out := []SubjectEntry{}
 	add := func(code string) {
@@ -843,12 +861,15 @@ func (s *Service) Subjects(ctx context.Context, p Principal, accountID, lang str
 			return
 		}
 		seen[code] = true
-		def, _ := subjects.Resolve(code, lang, nil)
-		name, _ := subjects.Resolve(code, lang, overrides)
+		def, _ := subjects.Resolve(code, lang, nil, global)
+		name, _ := subjects.Resolve(code, lang, overrides, global)
 		_, custom := overrides[code]
 		out = append(out, SubjectEntry{Code: code, Name: name, DefaultName: def, Custom: custom})
 	}
 	for code := range overrides {
+		add(code)
+	}
+	for code := range global {
 		add(code)
 	}
 	for code := range subjects.Defaults {
@@ -877,4 +898,49 @@ func (s *Service) ResetSubject(ctx context.Context, p Principal, accountID, code
 		return err
 	}
 	return s.Store.DeleteSubjectOverride(ctx, a.ID, strings.ToLower(strings.TrimSpace(code)))
+}
+
+// globalSubjects is every subject name an admin set, by lowercase code.
+func (s *Service) globalSubjects(ctx context.Context) (map[string]subjects.Name, error) {
+	rows, err := s.Store.GlobalSubjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]subjects.Name, len(rows))
+	for _, g := range rows {
+		out[g.Code] = subjects.Name{NL: g.NL, EN: g.EN}
+	}
+	return out, nil
+}
+
+// DefaultSubjects lists the built-in and global subject names, what every
+// account starts with.
+func (s *Service) DefaultSubjects(ctx context.Context, lang string) ([]Subject, error) {
+	global, err := s.globalSubjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []Subject{}
+	seen := map[string]bool{}
+	for _, codes := range []map[string]subjects.Name{global, subjects.Defaults} {
+		for code := range codes {
+			if !seen[code] {
+				seen[code] = true
+				name, _ := subjects.Resolve(code, lang, nil, global)
+				out = append(out, Subject{Code: code, Name: name})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Code < out[j].Code })
+	return out, nil
+}
+
+// DefaultSubjectName is what a code is called before an account renames it.
+func (s *Service) DefaultSubjectName(ctx context.Context, code, lang string) (string, error) {
+	global, err := s.globalSubjects(ctx)
+	if err != nil {
+		return "", err
+	}
+	name, _ := subjects.Resolve(code, lang, nil, global)
+	return name, nil
 }
