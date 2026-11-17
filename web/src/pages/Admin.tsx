@@ -424,7 +424,8 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
               </section>
             )}
 
-            <DialogFooter className="flex-wrap gap-2 sm:justify-start">
+            {/* Not DialogFooter: its negative margins eat the bottom padding of a scrolling dialog. */}
+            <div className="grid gap-2 border-t pt-4 sm:flex sm:flex-wrap">
               <Button className="h-11" disabled={impersonate.isPending || p.accounts.length === 0} onClick={() => impersonate.mutate()}>
                 {impersonate.isPending ? <Loader2 className="animate-spin" /> : <Eye />}
                 {t('impersonate')}
@@ -437,7 +438,7 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
                 <Trash2 />
                 {t('deleteProfile')}
               </Button>
-            </DialogFooter>
+            </div>
 
             <AdminPinDialog key={`${p.id}:${pinOpen}`} open={pinOpen} onOpenChange={setPinOpen} profile={p} onSaved={refresh} />
             <ConfirmDialog open={confirm === 'signout'} onOpenChange={(o) => !o && setConfirm(null)} title={t('signOutAll')} text={t('signOutAllText')} confirmLabel={t('signOutAll')} busy={signOut.isPending} onConfirm={() => signOut.mutate()} />
