@@ -143,13 +143,22 @@ export function LessonGroup({ lessons, isNow, onOpen }: { lessons: Lesson[]; isN
         </span>
         <ChevronDown aria-hidden="true" className={cn('size-4 shrink-0 self-center text-muted-foreground transition-transform', expanded && 'rotate-180')} />
       </button>
-      {expanded && (
-        <div className="grid gap-2 border-l-2 border-border pl-3">
-          {lessons.map((l) => (
-            <LessonCard key={l.id} lesson={l} isNow={isNow(l)} onOpen={() => onOpen(l)} />
-          ))}
+      {/* Rows animate from 0fr to 1fr, so the lessons slide open and closed instead of popping in. */}
+      <div
+        inert={!expanded}
+        className={cn(
+          '-mt-2 grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out motion-reduce:transition-none',
+          expanded ? 'mt-0 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className={cn('grid gap-2 border-l-2 border-border pl-3 transition-transform duration-300 ease-out motion-reduce:transition-none', expanded ? 'translate-y-0' : '-translate-y-2')}>
+            {lessons.map((l) => (
+              <LessonCard key={l.id} lesson={l} isNow={isNow(l)} onOpen={() => onOpen(l)} />
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
