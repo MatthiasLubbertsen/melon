@@ -347,11 +347,19 @@ func (h *HTTP) Me(ctx context.Context, school, token string) (User, error) {
 	return out[0], nil
 }
 
-// Children finds a parent's children. Zermelo has two ways to ask and which
-// one a parent token may read differs per school, so it tries the students
-// that list this parent first, then the parent's own list of children. Only
-// what Zermelo answered is logged: counts and errors, no names or codes.
+// Children finds a parent's children. A parent's own token may read
+// /users?familyMember=<parent> ("students of a specific parent"); checked
+// against a real parent token, which is refused on every other route. The
+// documented /students and /familymembers routes stay as fallbacks for
+// schools or tokens with other rights. Only what Zermelo answered is logged:
+// counts and errors, no names or codes.
 func (h *HTTP) Children(ctx context.Context, school, token, parentCode string) ([]User, error) {
+	var users []User
+	err0 := h.get(ctx, school, token, "users", url.Values{"familyMember": {parentCode}, "fields": {userFields}}, &users)
+	if err0 == nil && len(users) > 0 {
+		slog.Info("found the children of a parent account", "school", school, "via", "users", "children", len(users))
+		return users, nil
+	}
 	var students []struct {
 		UserCode  string `json:"userCode"`
 		FirstName string `json:"firstName"`
@@ -385,13 +393,12 @@ func (h *HTTP) Children(ctx context.Context, school, token, parentCode string) (
 		slog.Info("found the children of a parent account", "school", school, "via", "familymembers", "children", len(out))
 		return out, nil
 	}
-	slog.Info("found no children for a parent account", "school", school, "students", len(students), "studentsError", errText(err1), "familymembersError", errText(err2))
-	if err1 != nil && err2 != nil {
-		// Both refused: say why with the first answer, unless it was only "not allowed".
-		if errors.Is(err1, ErrForbidden) && errors.Is(err2, ErrForbidden) {
-			return nil, nil
+	slog.Info("found no children for a parent account", "school", school, "usersError", errText(err0), "studentsError", errText(err1), "familymembersError", errText(err2))
+	for _, err := range []error{err0, err1, err2} {
+		// A real failure (Zermelo down, token gone) beats "not allowed here".
+		if err != nil && !errors.Is(err, ErrForbidden) {
+			return nil, err
 		}
-		return nil, err1
 	}
 	return nil, nil
 }

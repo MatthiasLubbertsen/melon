@@ -62,14 +62,29 @@ func TestChildren(t *testing.T) {
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"response":{"status":200,"data":` + data + `}}`))
 	}
+	refuse := func(w http.ResponseWriter, _ *http.Request) { answer(w, 403, `[]`) }
 	for _, tc := range []struct {
 		name     string
+		byParent func(w http.ResponseWriter, r *http.Request) // users?familyMember=
 		students func(w http.ResponseWriter, r *http.Request)
 		want     []string
 		names    []string
 	}{
 		{
-			name: "students lists the parent",
+			// What a real parent token at a school allows: everything else is refused.
+			name: "users of this parent",
+			byParent: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("familyMember") != "o.jansen" {
+					t.Errorf("users asked for %q", r.URL.RawQuery)
+				}
+				answer(w, 200, `[{"code":"15315","firstName":"Lotte","prefix":null,"lastName":"Jansen","isStudent":true}]`)
+			},
+			students: refuse,
+			want:     []string{"15315"}, names: []string{"Lotte Jansen"},
+		},
+		{
+			name:     "students lists the parent",
+			byParent: refuse,
 			students: func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Query().Get("familyMembers") != "o.jansen" {
 					t.Errorf("students asked for %q", r.URL.RawQuery)
@@ -80,19 +95,22 @@ func TestChildren(t *testing.T) {
 		},
 		{
 			name:     "only the parent's own list is readable",
-			students: func(w http.ResponseWriter, r *http.Request) { answer(w, 403, `[]`) },
+			byParent: refuse,
+			students: refuse,
 			want:     []string{"15315"}, names: []string{"Lotte Jansen"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case "/api/v3/students":
-					tc.students(w, r)
-				case "/api/v3/familymembers":
-					answer(w, 200, `[{"students":["15315"]}]`)
-				case "/api/v3/users":
+				switch {
+				case r.URL.Path == "/api/v3/users" && r.URL.Query().Has("familyMember"):
+					tc.byParent(w, r)
+				case r.URL.Path == "/api/v3/users":
 					answer(w, 200, `[{"code":"15315","firstName":"Lotte","lastName":"Jansen","isStudent":true}]`)
+				case r.URL.Path == "/api/v3/students":
+					tc.students(w, r)
+				case r.URL.Path == "/api/v3/familymembers":
+					answer(w, 200, `[{"students":["15315"]}]`)
 				default:
 					http.NotFound(w, r)
 				}
