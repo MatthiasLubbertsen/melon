@@ -104,6 +104,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/app/oauth/request", s.handleOAuthRequest)
 	mux.HandleFunc("POST /api/app/oauth/approve", s.sessionOnly(s.handleOAuthApprove))
 	s.adminRoutes(mux)
+	s.feedbackRoutes(mux)
 
 	// OAuth 2.1 authorization server (for MCP clients).
 	for _, suffix := range []string{"", "/mcp"} {

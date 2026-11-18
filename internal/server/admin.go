@@ -175,6 +175,10 @@ func (s *Server) overview(ctx context.Context) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	unreadFeedback, err := s.Store.UnreadFeedback(ctx)
+	if err != nil {
+		return nil, err
+	}
 	since := s.Core.Today().AddDate(0, 0, -29).Format(time.DateOnly)
 	usage, err := s.Store.UsageSince(ctx, since)
 	if err != nil {
@@ -189,12 +193,13 @@ func (s *Server) overview(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{
-		"stats":   stats,
-		"totals":  map[string]int64{"requests": requests, "lessons": lessons},
-		"since":   since,
-		"today":   s.Core.Today().Format(time.DateOnly),
-		"usage":   usage,
-		"schools": schools,
+		"stats":          stats,
+		"unreadFeedback": unreadFeedback,
+		"totals":         map[string]int64{"requests": requests, "lessons": lessons},
+		"since":          since,
+		"today":          s.Core.Today().Format(time.DateOnly),
+		"usage":          usage,
+		"schools":        schools,
 	}, nil
 }
 
