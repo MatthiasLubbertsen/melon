@@ -32,7 +32,7 @@ var adminTools = []mcpTool{
 			"query": str("Part of a name, a user code, a school portal name or a profile id."),
 			"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many. Defaults to 20."},
 		}), Annotations: adminReadOnly,
-		run: func(ctx context.Context, s *Server, _ core.Principal, a mcpArgs) (any, error) {
+		run: func(ctx context.Context, s *Server, pr core.Principal, a mcpArgs) (any, error) {
 			if a.Limit <= 0 || a.Limit > 50 {
 				a.Limit = 20
 			}
@@ -42,7 +42,7 @@ var adminTools = []mcpTool{
 			}
 			out := []adminProfile{}
 			for _, p := range rows {
-				out = append(out, s.profileView(p))
+				out = append(out, s.profileView(p, pr.UserID))
 			}
 			return map[string]any{"profiles": out}, nil
 		},
@@ -52,8 +52,8 @@ var adminTools = []mcpTool{
 		Description: "Everything about one profile: linked accounts (school, role, user code, whether it can see others, calendar feed, Zermelo token expiry), sign-in number and PIN lock state, signed-in devices, API keys (by hint, never the key), connected MCP apps, and how many subject/teacher names the user set.",
 		InputSchema: schema([]string{"profile"}, map[string]any{"profile": str("Profile id (usr_...) from admin_find_profiles.")}),
 		Annotations: adminReadOnly,
-		run: func(ctx context.Context, s *Server, _ core.Principal, a mcpArgs) (any, error) {
-			return s.profileDetail(ctx, strings.TrimSpace(a.Profile))
+		run: func(ctx context.Context, s *Server, pr core.Principal, a mcpArgs) (any, error) {
+			return s.profileDetail(ctx, strings.TrimSpace(a.Profile), pr.UserID)
 		},
 	},
 	{
