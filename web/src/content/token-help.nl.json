@@ -1,0 +1,30 @@
+{
+  "title": "Hoe kom ik aan een koppelcode?",
+  "steps": [
+    {
+      "title": "Log in op het Zermelo Portal",
+      "text": "Ga naar het portaal van je school, bijvoorbeeld **jfc.zportal.nl**, en log in zoals je altijd doet.",
+      "image": null
+    },
+    {
+      "title": "Open Koppel externe applicatie",
+      "text": "Ga naar **Instellingen → Koppel externe applicatie**. Je ziet nu een koppelcode van 12 cijfers.",
+      "image": null
+    },
+    {
+      "title": "Maak een schermafbeelding",
+      "text": "De koppelcode kun je niet kopiëren. Druk daarom op **Print Screen** (prnt scrn) terwijl de code in beeld is.",
+      "image": null
+    },
+    {
+      "title": "Kopieer de code uit de afbeelding",
+      "text": "Klik in de balk van de schermafbeelding op de **AI-tekstknop** (tekstacties). Selecteer de koppelcode en kopieer hem.",
+      "image": null
+    },
+    {
+      "title": "Plak hem hier",
+      "text": "Vul hierboven je school in, plak de code bij **Koppelcode** en kies **Koppelen**. Een koppelcode werkt maar één keer en is kort geldig, dus doe dit meteen.",
+      "image": null
+    }
+  ]
+}
