@@ -8,6 +8,12 @@ export type Account = {
   role: 'student' | 'employee' | 'parent' | 'other'
   userCode: string
   canViewOthers: boolean
+  /** The name the user gave this account; empty when they did not. */
+  nickname: string
+  /** The name Zermelo has for the account's person. */
+  zermeloName: string
+  /** On a child's account linked through a parent: the parent's own code. */
+  parentCode?: string
 }
 
 export type Person = { code: string; name: string; type: 'student' | 'employee' }
@@ -164,6 +170,7 @@ export const api = {
   link: (body: { school: string; code?: string; token?: string }) => data(request<Account>('POST', '/api/app/accounts', body)),
   demo: () => data(request<Account[]>('POST', '/api/app/demo', {})),
   unlink: (id: string) => data(request<void>('DELETE', `/api/app/accounts/${id}`)),
+  setNickname: (id: string, nickname: string) => data(request<Account>('PUT', `/api/app/accounts/${id}/nickname`, { nickname })),
 
   schedule: (account: string, p: { week: string; person?: string; lang: string; fresh?: boolean }) =>
     request<Schedule>('GET', `/api/v1/accounts/${account}/schedule${qs(p)}`),

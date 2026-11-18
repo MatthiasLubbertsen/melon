@@ -163,7 +163,7 @@ func (s *Server) handleSetPIN(w http.ResponseWriter, r *http.Request, p core.Pri
 		writeErr(w, err)
 		return
 	}
-	l := store.Login{UserID: p.UserID, Name: acc.ZermeloUser, School: acc.School, PINHash: s.Core.Box.PINHash(p.UserID, body.PIN)}
+	l := store.Login{UserID: p.UserID, Name: acc.TokenUser(), School: acc.School, PINHash: s.Core.Box.PINHash(p.UserID, body.PIN)}
 	if err := s.Store.SetLogin(ctx, l); err != nil {
 		writeErr(w, err)
 		return

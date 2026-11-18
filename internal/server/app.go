@@ -284,3 +284,21 @@ func (s *Server) handleDeleteGrant(w http.ResponseWriter, r *http.Request, p cor
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// handleNickname names one of the profile's accounts, e.g. a parent's two
+// children that would otherwise both show the parent's school.
+func (s *Server) handleNickname(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	var body struct {
+		Nickname string `json:"nickname"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	a, err := s.Core.SetNickname(r.Context(), p, r.PathValue("account"), body.Nickname)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeData(w, a)
+}

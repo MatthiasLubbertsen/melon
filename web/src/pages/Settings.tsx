@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, BookOpen, ShieldCheck, Wrench, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
+import { ArrowLeft, BookOpen, ShieldCheck, Wrench, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Pencil, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -70,6 +70,47 @@ const accountNames = (ids: string[], accounts: Account[]) => ids.map((id) => acc
 
 // ---- Accounts ----
 
+/** Gives an account a name of your own, e.g. to tell a parent's children apart. */
+function NicknameDialog({ account, onClose, onSaved }: { account: Account | null; onClose: () => void; onSaved: () => Promise<unknown> }) {
+  const { t, error } = useI18n()
+  const [value, setValue] = useState(account?.nickname ?? '')
+  const save = useMutation({
+    mutationFn: () => api.setNickname(account!.id, value.trim()),
+    onSuccess: async () => {
+      await onSaved()
+      toast.success(t('saved'))
+      onClose()
+    },
+    onError: (e) => toast.error(error(e)),
+  })
+  return (
+    <Dialog open={account !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t('nicknameTitle')}</DialogTitle>
+          <DialogDescription>{t('nicknameHint', { name: account?.zermeloName ?? '' })}</DialogDescription>
+        </DialogHeader>
+        <form
+          className="grid gap-3"
+          onSubmit={(e) => {
+            e.preventDefault()
+            save.mutate()
+          }}
+        >
+          <Label htmlFor="nickname" className="sr-only">
+            {t('nicknameLabel')}
+          </Label>
+          <Input id="nickname" value={value} onChange={(e) => setValue(e.target.value)} maxLength={40} placeholder={account?.zermeloName} autoFocus className="h-11 text-base" />
+          <Button type="submit" className="h-11" disabled={save.isPending || value.trim() === (account?.nickname ?? '')}>
+            {save.isPending && <Loader2 className="animate-spin" />}
+            {t('save')}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function AccountsTab() {
   const { t } = useI18n()
   const { accounts, reload, swap } = useSession()
@@ -77,6 +118,7 @@ function AccountsTab() {
   const navigate = useNavigate()
   const [linking, setLinking] = useState(false)
   const [unlinking, setUnlinking] = useState<Account | null>(null)
+  const [naming, setNaming] = useState<Account | null>(null)
   const [forgetting, setForgetting] = useState(false)
   const unlink = useMutation({
     mutationFn: (a: Account) => api.unlink(a.id),
@@ -104,13 +146,19 @@ function AccountsTab() {
               <div className="grid min-w-0 gap-0.5">
                 <span className="truncate font-medium">{a.name}</span>
                 <span className="truncate text-sm text-muted-foreground">
-                  {a.school}.zportal.nl · {t(a.role)}
+                  {a.school}.zportal.nl · {a.parentCode ? t('viaParent') : t(a.role)}
+                  {a.nickname && ` · ${a.zermeloName}`}
                 </span>
               </div>
-              <Button variant="destructive" className="h-10 max-sm:w-10 max-sm:px-0" onClick={() => setUnlinking(a)}>
-                <Unplug />
-                <span className="max-sm:sr-only">{t('unlink')}</span>
-              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" size="icon" className="size-10" aria-label={t('nickname')} title={t('nickname')} onClick={() => setNaming(a)}>
+                  <Pencil />
+                </Button>
+                <Button variant="destructive" className="h-10 max-sm:w-10 max-sm:px-0" onClick={() => setUnlinking(a)}>
+                  <Unplug />
+                  <span className="max-sm:sr-only">{t('unlink')}</span>
+                </Button>
+              </div>
               {/* Own row: next to the button it does not fit on a phone. */}
               {a.canViewOthers && (
                 <Chip tone="honeydew" className="col-span-2 col-start-2 w-fit max-w-full shrink">
@@ -137,6 +185,7 @@ function AccountsTab() {
       </Section>
 
       <LinkDialog open={linking} onOpenChange={setLinking} />
+      <NicknameDialog key={naming?.id ?? ''} account={naming} onClose={() => setNaming(null)} onSaved={reload} />
       <ConfirmDialog
         open={unlinking !== null}
         onOpenChange={(o) => !o && setUnlinking(null)}

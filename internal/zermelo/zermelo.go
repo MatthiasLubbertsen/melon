@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -135,6 +136,8 @@ type Upstream interface {
 	Announcements(ctx context.Context, school, token string) ([]Announcement, error)
 	// Courses returns the courses the student behind token follows in a school year.
 	Courses(ctx context.Context, school, token string, schoolYear int) ([]Course, error)
+	// Children returns the students a parent (family member) token belongs to.
+	Children(ctx context.Context, school, token, parentCode string) ([]User, error)
 }
 
 var schoolRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -342,6 +345,62 @@ func (h *HTTP) Me(ctx context.Context, school, token string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	return out[0], nil
+}
+
+// Children finds a parent's children. Zermelo has two ways to ask and which
+// one a parent token may read differs per school, so it tries the students
+// that list this parent first, then the parent's own list of children. Only
+// what Zermelo answered is logged: counts and errors, no names or codes.
+func (h *HTTP) Children(ctx context.Context, school, token, parentCode string) ([]User, error) {
+	var students []struct {
+		UserCode  string `json:"userCode"`
+		FirstName string `json:"firstName"`
+		Prefix    string `json:"prefix"`
+		LastName  string `json:"lastName"`
+	}
+	err1 := h.get(ctx, school, token, "students", url.Values{"familyMembers": {parentCode}, "fields": {"userCode,firstName,prefix,lastName"}}, &students)
+	if err1 == nil && len(students) > 0 {
+		out := make([]User, 0, len(students))
+		for _, s := range students {
+			out = append(out, User{Code: s.UserCode, FirstName: s.FirstName, Prefix: s.Prefix, LastName: s.LastName, IsStudent: true})
+		}
+		slog.Info("found the children of a parent account", "school", school, "via", "students", "children", len(out))
+		return out, nil
+	}
+	var parents []struct {
+		Students []string `json:"students"`
+	}
+	err2 := h.get(ctx, school, token, "familymembers", url.Values{"userCode": {parentCode}, "fields": {"students"}}, &parents)
+	if err2 == nil && len(parents) > 0 && len(parents[0].Students) > 0 {
+		out := make([]User, 0, len(parents[0].Students))
+		for _, code := range parents[0].Students {
+			u := User{Code: code, IsStudent: true}
+			// Names are a nicety; the code alone still opens the schedule.
+			var named []User
+			if err := h.get(ctx, school, token, "users", url.Values{"code": {code}, "fields": {userFields}}, &named); err == nil && len(named) == 1 {
+				u.FirstName, u.Prefix, u.LastName = named[0].FirstName, named[0].Prefix, named[0].LastName
+			}
+			out = append(out, u)
+		}
+		slog.Info("found the children of a parent account", "school", school, "via", "familymembers", "children", len(out))
+		return out, nil
+	}
+	slog.Info("found no children for a parent account", "school", school, "students", len(students), "studentsError", errText(err1), "familymembersError", errText(err2))
+	if err1 != nil && err2 != nil {
+		// Both refused: say why with the first answer, unless it was only "not allowed".
+		if errors.Is(err1, ErrForbidden) && errors.Is(err2, ErrForbidden) {
+			return nil, nil
+		}
+		return nil, err1
+	}
+	return nil, nil
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return redact(err)
 }
 
 func (h *HTTP) Users(ctx context.Context, school, token string) ([]User, error) {

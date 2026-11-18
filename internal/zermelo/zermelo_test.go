@@ -56,3 +56,62 @@ func TestLiveScheduleExpandsConflicts(t *testing.T) {
 		}
 	}
 }
+
+func TestChildren(t *testing.T) {
+	answer := func(w http.ResponseWriter, status int, data string) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"response":{"status":200,"data":` + data + `}}`))
+	}
+	for _, tc := range []struct {
+		name     string
+		students func(w http.ResponseWriter, r *http.Request)
+		want     []string
+		names    []string
+	}{
+		{
+			name: "students lists the parent",
+			students: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("familyMembers") != "o.jansen" {
+					t.Errorf("students asked for %q", r.URL.RawQuery)
+				}
+				answer(w, 200, `[{"userCode":"15315","firstName":"Lotte","lastName":"Jansen"},{"userCode":"15316","firstName":"Daan","prefix":"van","lastName":"Jansen"}]`)
+			},
+			want: []string{"15315", "15316"}, names: []string{"Lotte Jansen", "Daan van Jansen"},
+		},
+		{
+			name:     "only the parent's own list is readable",
+			students: func(w http.ResponseWriter, r *http.Request) { answer(w, 403, `[]`) },
+			want:     []string{"15315"}, names: []string{"Lotte Jansen"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/api/v3/students":
+					tc.students(w, r)
+				case "/api/v3/familymembers":
+					answer(w, 200, `[{"students":["15315"]}]`)
+				case "/api/v3/users":
+					answer(w, 200, `[{"code":"15315","firstName":"Lotte","lastName":"Jansen","isStudent":true}]`)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+			h := NewHTTP()
+			h.BaseURL = func(string) string { return srv.URL }
+			got, err := h.Children(context.Background(), "jfc", "token", "o.jansen")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %+v", got)
+			}
+			for i := range got {
+				if got[i].Code != tc.want[i] || got[i].Name() != tc.names[i] {
+					t.Errorf("child %d = %s %q", i, got[i].Code, got[i].Name())
+				}
+			}
+		})
+	}
+}

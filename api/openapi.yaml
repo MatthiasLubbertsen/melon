@@ -420,16 +420,22 @@ components:
   schemas:
     Account:
       type: object
-      required: [id, school, name, role, userCode, canViewOthers]
+      required: [id, school, name, role, userCode, canViewOthers, nickname, zermeloName]
       properties:
         id: { type: string, examples: ["acc_vakhve3jtxkv"] }
         school: { type: string, description: "Portal name: the part before `.zportal.nl`.", examples: ["jfc"] }
-        name: { type: string, description: Full name of the account's owner., examples: ["Sam de Vries"] }
-        role: { type: string, enum: [student, employee, parent, other] }
-        userCode: { type: string, description: The owner's code in Zermelo., examples: ["100001"] }
+        name: { type: string, description: "The name to show: the nickname when the user set one, else the name from Zermelo.", examples: ["Sam de Vries"] }
+        role:
+          type: string
+          enum: [student, employee, parent, other]
+          description: "`parent` accounts each stand for one child of a parent, linked through the parent's token (see `parentCode`)."
+        userCode: { type: string, description: "Whose schedule this account shows: the owner's code in Zermelo, or the child's for a parent's account.", examples: ["100001"] }
         canViewOthers:
           type: boolean
           description: True when this account can see other people's schedules.
+        nickname: { type: string, description: "A name the user gave this account. Empty when they did not." }
+        zermeloName: { type: string, description: "The name Zermelo has for the person whose schedule this is.", examples: ["Sam de Vries"] }
+        parentCode: { type: string, description: "On a child's account linked through a parent: the parent's own code in Zermelo." }
     Person:
       type: object
       required: [code, name, type]
