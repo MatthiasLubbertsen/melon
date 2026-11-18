@@ -9,6 +9,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } f
 import { Chip } from '@/components/bits'
 import { api, type Lesson } from '@/lib/api'
 import { formatDay, formatTime } from '@/lib/dates'
+import { hyphenate } from '@/lib/hyphenate'
 import { useI18n, type Key } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -58,7 +59,7 @@ function Chips({ lesson, isNow }: { lesson: Lesson; isNow?: boolean }) {
 }
 
 export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: boolean; onOpen: () => void }) {
-  const { t, locale } = useI18n()
+  const { t, lang, locale } = useI18n()
   const cancelled = lesson.status === 'cancelled'
   const changed = lesson.status === 'changed'
   const where = [lesson.locations.join(', '), lesson.teachers.map((x) => x.name).join(', ')].filter(Boolean).join(' · ')
@@ -68,7 +69,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
       onClick={onOpen}
       data-status={lesson.status}
       className={cn(
-        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:gap-2.5 md:pr-2.5 md:pl-3.5',
         cancelled && 'border-watermelon/50',
         changed && 'border-cantaloupe/60',
         isNow && !cancelled && 'border-honeydew ring-2 ring-honeydew/40',
@@ -76,7 +77,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
     >
       {/* The coloured edge makes changes visible while scrolling. */}
       <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1.5', cancelled ? 'bg-watermelon' : changed ? 'bg-cantaloupe' : isNow ? 'bg-honeydew' : 'bg-transparent')} />
-      <span className="flex w-11 shrink-0 flex-col items-center justify-center text-center">
+      <span className="flex w-11 shrink-0 flex-col items-center justify-center text-center md:w-10">
         {lesson.period && (
           <span className={cn('leading-none', cancelled && 'text-muted-foreground')} aria-label={t('period', { n: lesson.period.from })}>
             <span className="text-xl font-semibold tabular-nums">{t('periodNumber', { n: lesson.period.from })}</span>
@@ -90,8 +91,8 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
         </span>
       </span>
       <span className="grid min-w-0 flex-1 content-center gap-1">
-        <span className={cn('line-clamp-2 text-base leading-snug font-medium break-words', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
-          {lesson.title}
+        <span className={cn('line-clamp-2 text-base leading-snug font-medium break-words hyphens-auto', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
+          {hyphenate(lesson.title, lang)}
         </span>
         {where && <span className={cn('truncate text-sm text-muted-foreground', cancelled && 'line-through')}>{where}</span>}
         {(lesson.status !== 'scheduled' || lesson.type !== 'lesson' || lesson.online || isNow) && (
