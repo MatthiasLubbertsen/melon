@@ -129,6 +129,25 @@ func TestAdmin(t *testing.T) {
 	if code, _ := user.fresh().do("POST", "/api/app/login", "", map[string]any{"userId": "100001", "pin": "2468"}); code != 200 {
 		t.Fatalf("sign in after unlock: %d", code)
 	}
+	// The list says who has a PIN and can filter on it.
+	hasPIN := func(filter string) map[string]bool {
+		_, body := admin.do("GET", "/api/app/admin/profiles?pin="+filter, "", nil)
+		out := map[string]bool{}
+		for _, p := range body["data"].([]any) {
+			p := p.(map[string]any)
+			out[p["id"].(string)] = p["pin"].(bool)
+		}
+		return out
+	}
+	if all := hasPIN(""); !all[profile] || len(all) != 2 {
+		t.Fatalf("pin flags: %v", all)
+	}
+	if with := hasPIN("yes"); len(with) != 1 || !with[profile] {
+		t.Fatalf("with PIN: %v", with)
+	}
+	if without := hasPIN("no"); len(without) != 1 || without[profile] {
+		t.Fatalf("without PIN: %v", without)
+	}
 
 	// Look at Melon as the user, then come back.
 	code, body = admin.do("POST", "/api/app/admin/profiles/"+profile+"/impersonate", "", nil)

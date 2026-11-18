@@ -144,17 +144,19 @@ type ProfileSummary struct {
 }
 
 // Profiles finds profiles by profile id, account name, user code, school or
-// sign-in number. An empty query lists the most recently active ones.
-func (s *Store) Profiles(ctx context.Context, query string, limit int) ([]ProfileSummary, error) {
+// sign-in number. An empty query lists the most recently active ones. pin
+// narrows them to profiles with ("yes") or without ("no") a PIN sign-in.
+func (s *Store) Profiles(ctx context.Context, query, pin string, limit int) ([]ProfileSummary, error) {
 	q := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(query)) + "%"
 	rows, err := s.db.QueryContext(ctx, `SELECT u.id, u.created_at,
 			COALESCE((SELECT MAX(last_seen) FROM sessions WHERE user_id = u.id AND impersonator IS NULL), 0) AS seen,
 			(SELECT COUNT(*) FROM api_keys WHERE user_id = u.id)
 		FROM users u
-		WHERE ? = '%%' OR u.id LIKE ? ESCAPE '\'
+		WHERE (? = '%%' OR u.id LIKE ? ESCAPE '\'
 			OR EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = u.id AND (a.display_name LIKE ? ESCAPE '\' OR a.zermelo_user LIKE ? ESCAPE '\' OR a.school LIKE ? ESCAPE '\'))
-			OR EXISTS (SELECT 1 FROM logins l WHERE l.user_id = u.id AND l.login LIKE ? ESCAPE '\')
-		ORDER BY seen DESC, u.created_at DESC LIMIT ?`, q, q, q, q, q, q, limit)
+			OR EXISTS (SELECT 1 FROM logins l WHERE l.user_id = u.id AND l.login LIKE ? ESCAPE '\'))
+			AND (? = '' OR (? = 'yes') = EXISTS (SELECT 1 FROM logins l WHERE l.user_id = u.id))
+		ORDER BY seen DESC, u.created_at DESC LIMIT ?`, q, q, q, q, q, q, pin, pin, limit)
 	if err != nil {
 		return nil, err
 	}
