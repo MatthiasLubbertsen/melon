@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ChevronLeft, ChevronRight, CloudOff, Megaphone, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
@@ -8,7 +8,7 @@ import { AccountMenu } from '@/components/AccountMenu'
 import { Banner } from '@/components/bits'
 import { CodeLookup } from '@/components/CodeLookup'
 import { LessonCard, LessonDrawer, LessonGroup } from '@/components/Lesson'
-import { groupOverlapping } from '@/lib/groupLessons'
+import { layoutWeek, lineOf, spanOf } from '@/lib/layoutWeek'
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
 import { PeopleSearch } from '@/components/PeopleSearch'
@@ -18,6 +18,9 @@ import { useNow, usePullToRefresh } from '@/lib/hooks'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
+
+/** Puts a cell on the desktop week grid at the column and lines its CSS variables name. */
+const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-3'
 
 export function Schedule() {
   const { t, lang, locale, plural, error } = useI18n()
@@ -107,6 +110,9 @@ export function Schedule() {
   }
 
   const isNow = (l: Lesson) => new Date(l.start).getTime() <= now && now < new Date(l.end).getTime()
+  const layout = useMemo(() => layoutWeek(byDay, days), [byDay, days])
+  const lessonGroup = (g: Lesson[]) =>
+    g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
 
   return (
@@ -251,33 +257,57 @@ export function Schedule() {
 
         <h1 className="px-1 text-sm font-medium first-letter:uppercase md:hidden">{formatDay(day, locale, { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
 
-        <div className={cn('grid gap-4 md:grid-flow-col md:auto-cols-fr md:items-start md:gap-3', query.isPlaceholderData && 'opacity-60')}>
-          {days.map((d) => {
+        {/* One grid for the week on desktop: a column per day and a row per period, so the hours line up across days. */}
+        <div style={{ '--cols': days.length } as CSSProperties} className={cn('grid gap-4 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))] md:gap-x-3 md:gap-y-0', query.isPlaceholderData && 'opacity-60')}>
+          {days.map((d, i) => {
             const ls = byDay.get(d) ?? []
+            const dl = layout.days.get(d)!
+            // Line 1 holds the day headers; period rows start below them.
+            const at = (line: number, span = 1) => ({ '--c': i + 1, '--r': line + 1, '--s': span }) as CSSProperties
             return (
-              <section key={d} aria-label={formatDay(d, locale, { weekday: 'long', day: 'numeric', month: 'long' })} className={cn('min-w-0 gap-2', d === day ? 'grid' : 'hidden md:grid')}>
-                <h2 className={cn('hidden items-baseline gap-1.5 rounded-lg px-2 py-1 text-sm font-medium md:flex', d === todayStr && 'bg-primary text-primary-foreground')}>
+              <section key={d} aria-label={formatDay(d, locale, { weekday: 'long', day: 'numeric', month: 'long' })} className={cn('min-w-0 gap-2 md:contents', d === day ? 'grid' : 'hidden')}>
+                <h2 style={at(0)} className={cn(place, 'hidden items-baseline gap-1.5 self-start rounded-lg px-2 py-1 text-sm font-medium md:flex', d === todayStr && 'bg-primary text-primary-foreground')}>
                   <span className="first-letter:uppercase">{formatDay(d, locale, { weekday: 'short' })}</span>
                   <span className={d === todayStr ? '' : 'text-muted-foreground'}>{formatDay(d, locale, { day: 'numeric', month: 'short' })}</span>
                 </h2>
                 {loading ? (
-                  [0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-[4.75rem] rounded-xl" />)
+                  [0, 1, 2, 3, 4].map((k) => (
+                    <div key={k} style={at(2 * k + 1)} className={place}>
+                      <Skeleton className="h-[4.75rem] rounded-xl" />
+                    </div>
+                  ))
                 ) : ls.length === 0 ? (
                   !query.isError && (
-                    <div className="grid place-items-center gap-1 rounded-xl border border-dashed px-4 py-10 text-center md:py-6">
-                      <Logo className="text-3xl opacity-80" />
-                      <p className="mt-2 font-medium">{t('noLessons')}</p>
-                      <p className="text-sm text-muted-foreground md:hidden">{t('noLessonsHint')}</p>
+                    <div style={at(1, layout.rows)} className={place}>
+                      <div className="grid place-items-center gap-1 rounded-xl border border-dashed px-4 py-10 text-center md:py-6">
+                        <Logo className="text-3xl opacity-80" />
+                        <p className="mt-2 font-medium">{t('noLessons')}</p>
+                        <p className="text-sm text-muted-foreground md:hidden">{t('noLessonsHint')}</p>
+                      </div>
                     </div>
                   )
                 ) : (
-                  groupOverlapping(ls).map((g) =>
-                    g.length === 1 ? (
-                      <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} />
-                    ) : (
-                      <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
-                    ),
-                  )
+                  <>
+                    {dl.cells.map((c) =>
+                      c.kind === 'free' ? (
+                        <div key={`free-${c.period}`} style={at(lineOf(layout, c.period))} className={place}>
+                          <div className="flex h-full min-h-11 items-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-sm text-muted-foreground">
+                            <span className="font-medium tabular-nums">{t('period', { n: c.period })}</span>
+                            <span>{t('free')}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div key={c.groups[0][0].id} style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid content-start gap-2')}>
+                          {c.groups.map((g) => lessonGroup(g))}
+                        </div>
+                      ),
+                    )}
+                    {dl.unplaced.map((g, k) => (
+                      <div key={g[0].id} style={at(layout.rows + 1 + k)} className={place}>
+                        {lessonGroup(g)}
+                      </div>
+                    ))}
+                  </>
                 )}
               </section>
             )
