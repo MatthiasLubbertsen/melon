@@ -77,6 +77,7 @@ type Service struct {
 const (
 	scheduleTTL  = 30 * time.Second
 	directoryTTL = 10 * time.Minute
+	coursesTTL   = 6 * time.Hour
 	MaxRangeDays = 42
 )
 
@@ -792,10 +793,56 @@ func (s *Service) teacherNames(ctx context.Context, a store.Account, token strin
 			}
 		}
 	}
+	if a.Role != "employee" {
+		// Students cannot list the staff, but their courses name the teachers
+		// by code. Without a full name the code stands in for it.
+		for _, code := range s.courseTeachers(ctx, a, token) {
+			if _, ok := names[code]; !ok {
+				names[code] = code
+			}
+		}
+	}
 	for code, name := range custom {
 		names[code] = name
 	}
 	return names, custom, nil
+}
+
+// courseTeachers lists the teacher codes on a student's courses this school
+// year. Best effort: a schedule still works without them.
+func (s *Service) courseTeachers(ctx context.Context, a store.Account, token string) []string {
+	year := schoolYear(time.Now().In(s.Loc))
+	courses, _, err := zermelo.Get(ctx, s.Cache, fmt.Sprintf("acct:%s:courses:%d", a.ID, year), coursesTTL, func(ctx context.Context) ([]zermelo.Course, error) {
+		out, err := s.Up.Courses(ctx, a.School, token, year)
+		if errors.Is(err, zermelo.ErrForbidden) {
+			// Zermelo refuses this for some accounts. Remember the empty answer
+			// for the whole TTL instead of asking again on every schedule.
+			return nil, nil
+		}
+		return out, err
+	})
+	if err != nil {
+		slog.Debug("cannot read courses for teacher names", "account", a.ID, "error", err)
+		return nil
+	}
+	var codes []string
+	for _, c := range courses {
+		for _, t := range c.Teachers {
+			if code := strings.ToLower(strings.TrimSpace(t)); code != "" {
+				codes = append(codes, code)
+			}
+		}
+	}
+	return codes
+}
+
+// schoolYear is the school year a date falls in. Years start in August, so
+// November 2026 is 2026 and March 2027 is still 2026.
+func schoolYear(now time.Time) int {
+	if now.Month() >= time.August {
+		return now.Year()
+	}
+	return now.Year() - 1
 }
 
 // Teachers lists every teacher code Melon has a name for on this account.

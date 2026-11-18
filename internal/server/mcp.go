@@ -185,7 +185,7 @@ func init() {
 	mcpTools = append(mcpTools,
 		mcpTool{
 			Name: "list_teachers", Title: "List teacher names",
-			Description: "List the teacher codes (like 'dkr') Melon has a name for on an account: the user's own names, plus the school's staff list for accounts that can view others.",
+			Description: "List the teacher codes (like 'dkr') Melon has a name for on an account: the user's own names, the teachers of a student's courses (by code), plus the school's staff list for accounts that can view others.",
 			InputSchema: schema(nil, map[string]any{"account": accountProp}), Annotations: readOnly,
 			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
 				id, err := s.mcpAccount(ctx, p, a.Account)

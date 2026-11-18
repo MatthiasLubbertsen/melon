@@ -105,6 +105,13 @@ func expandConflicts(in []Appointment) []Appointment {
 	return out
 }
 
+// Course is a class a student follows in one school year. Only the teachers
+// are used: they are how a student learns the codes of the people teaching them.
+type Course struct {
+	ID       int64    `json:"id"`
+	Teachers []string `json:"teachers"`
+}
+
 type Announcement struct {
 	ID    int64  `json:"id"`
 	Start int64  `json:"start"`
@@ -126,6 +133,8 @@ type Upstream interface {
 	// read this for people they share lessons with, when they know the code.
 	Appointments(ctx context.Context, school, token, code string, from, to time.Time) ([]Appointment, error)
 	Announcements(ctx context.Context, school, token string) ([]Announcement, error)
+	// Courses returns the courses the student behind token follows in a school year.
+	Courses(ctx context.Context, school, token string, schoolYear int) ([]Course, error)
 }
 
 var schoolRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -384,6 +393,17 @@ func (h *HTTP) Appointments(ctx context.Context, school, token, code string, fro
 func (h *HTTP) Announcements(ctx context.Context, school, token string) ([]Announcement, error) {
 	var out []Announcement
 	err := h.get(ctx, school, token, "announcements", url.Values{"user": {"~me"}, "current": {"true"}}, &out)
+	return out, err
+}
+
+// courseFields is kept to what Melon reads: asking for more (such as the
+// student list) can fail the whole request under Zermelo's security rules.
+const courseFields = "id,teachers"
+
+func (h *HTTP) Courses(ctx context.Context, school, token string, schoolYear int) ([]Course, error) {
+	var out []Course
+	q := url.Values{"student": {"~me"}, "schoolYear": {strconv.Itoa(schoolYear)}, "fields": {courseFields}}
+	err := h.get(ctx, school, token, "courses", q, &out)
 	return out, err
 }
 
