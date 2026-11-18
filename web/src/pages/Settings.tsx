@@ -145,9 +145,9 @@ function AccountsTab() {
               <Avatar name={a.name} className="size-10 text-sm" />
               <div className="grid min-w-0 gap-0.5">
                 <span className="truncate font-medium">{a.name}</span>
+                {/* What tells accounts apart comes first, so it survives truncation on a phone. */}
                 <span className="truncate text-sm text-muted-foreground">
-                  {a.school}.zportal.nl · {a.parentCode ? t('viaParent') : t(a.role)}
-                  {a.nickname && ` · ${a.zermeloName}`}
+                  {[a.nickname && a.zermeloName, a.parentCode ? t('viaParent') : t(a.role), `${a.school}.zportal.nl`].filter(Boolean).join(' · ')}
                 </span>
               </div>
               <div className="flex gap-2">
