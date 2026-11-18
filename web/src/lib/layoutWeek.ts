@@ -6,8 +6,7 @@ import { groupOverlapping } from '@/lib/groupLessons'
  * day and a day that starts late shows its free first hours.
  *
  * Rows are grid lines on the desktop week grid: period p takes line
- * 2 * (p - first) + 1, and the even lines between periods are left for what
- * happens between them (breaks). A lesson over several periods spans them.
+ * 2 * (p - first) + 1, and the even lines between periods hold the breaks. A lesson over several periods spans them.
  */
 
 /** Minutes since midnight in school time; the API sends local times with their offset. */
@@ -22,7 +21,12 @@ export type DayLayout = {
   cells: Cell[]
   /** Lessons Melon cannot place in a period; shown after the rest. */
   unplaced: Lesson[][]
+  /** Breaks between one period and the next, in minutes. */
+  breaks: { after: number; minutes: number }[]
 }
+
+/** A gap shorter than this is changing rooms, not a break. */
+const MIN_BREAK = 5
 
 export type WeekLayout = {
   first: number
@@ -121,7 +125,16 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
       })
       next = run.to + 1
     }
-    layoutDays.set(d, { cells, unplaced: unplacedByDay.get(d)! })
+    const bounds = (c: Cell) => (c.kind === 'lessons' ? { start: c.start, end: c.end, from: c.from, to: c.to } : { ...times.get(c.period), from: c.period, to: c.period })
+    const breaks: DayLayout['breaks'] = []
+    for (let k = 1; k < cells.length; k++) {
+      const a = bounds(cells[k - 1])
+      const b = bounds(cells[k])
+      if (a.end === undefined || b.start === undefined) continue
+      const minutes = b.start - a.end
+      if (minutes >= MIN_BREAK) breaks.push({ after: a.to, minutes })
+    }
+    layoutDays.set(d, { cells, unplaced: unplacedByDay.get(d)!, breaks })
   }
   return { first, last, rows: spanOf(first, last), days: layoutDays, times }
 }
