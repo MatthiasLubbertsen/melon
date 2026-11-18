@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTheme } from 'next-themes'
-import { ArrowLeft, BookOpen, ShieldCheck, Wrench, CalendarPlus, Eye, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
+import { ArrowLeft, BookOpen, ShieldCheck, Wrench, CalendarPlus, Eye, Info, KeyRound, Loader2, LogOut, Monitor, Moon, Plus, RotateCcw, Search, Sun, Trash2, Unplug } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -703,6 +703,9 @@ export function Settings() {
           <ArrowLeft className="size-5" />
         </Button>
         <h1 className="flex-1 text-xl font-semibold">{t('settings')}</h1>
+        <Button variant="ghost" size="icon" className="size-11" aria-label={t('about')} title={t('about')} render={<Link to="/info" />}>
+          <Info className="size-5" />
+        </Button>
         {session.admin && (
           <Button variant="outline" className="h-10" render={<Link to="/admin" />}>
             <ShieldCheck />
