@@ -216,10 +216,12 @@ type adminProfile struct {
 	Accounts   []adminAccount `json:"accounts"`
 	Keys       int            `json:"keys"`
 	Admin      bool           `json:"admin"`
+	// PIN says whether the profile can be signed in to with a user number and PIN.
+	PIN bool `json:"pin"`
 }
 
 func (s *Server) profileView(p store.ProfileSummary) adminProfile {
-	out := adminProfile{ID: p.ID, CreatedAt: time.Unix(p.CreatedAt, 0).UTC(), LastSeenAt: unixPtr(p.LastSeen), Keys: p.Keys, Accounts: []adminAccount{}, Admin: s.Admins.match(p.ID, p.Accounts)}
+	out := adminProfile{ID: p.ID, CreatedAt: time.Unix(p.CreatedAt, 0).UTC(), LastSeenAt: unixPtr(p.LastSeen), Keys: p.Keys, Accounts: []adminAccount{}, Admin: s.Admins.match(p.ID, p.Accounts), PIN: p.Login != nil}
 	if p.Login != nil {
 		out.Login = &loginView{UserID: p.Login.Name, School: p.Login.School}
 	}
@@ -239,7 +241,11 @@ func (s *Server) handleAdminProfiles(w http.ResponseWriter, r *http.Request, _ c
 	if len(q) > 64 {
 		q = q[:64]
 	}
-	rows, err := s.Store.Profiles(r.Context(), q, 50)
+	pin := r.URL.Query().Get("pin")
+	if pin != "yes" && pin != "no" {
+		pin = ""
+	}
+	rows, err := s.Store.Profiles(r.Context(), q, pin, 50)
 	if err != nil {
 		writeErr(w, err)
 		return
