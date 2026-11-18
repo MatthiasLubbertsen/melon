@@ -18,6 +18,15 @@ function typeLabel(type: string): Key | null {
   return type === 'lesson' ? null : ((['exam', 'activity', 'choice', 'talk'].includes(type) ? `type_${type}` : 'type_other') as Key)
 }
 
+/**
+ * Zermelo's note on a cancelled lesson is usually just "Les vervalt" or "Deze
+ * les vervalt.", which the Vervalt chip already says. Only a note that adds
+ * something (a reason, a replacement) is worth showing next to it.
+ */
+function onlySaysCancelled(note: string): boolean {
+  return /^(de(ze)?\s+)?(les|activiteit|afspraak)\s+(vervalt|is vervallen)\.?$/i.test(note.trim())
+}
+
 /** Status chips: what changed is spelled out, never just a colour. */
 function Chips({ lesson, isNow }: { lesson: Lesson; isNow?: boolean }) {
   const { t } = useI18n()
@@ -238,7 +247,7 @@ export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | 
             <div className="flex flex-wrap gap-1.5">
               <Chips lesson={l} />
             </div>
-            {l.changeNote && (
+            {l.changeNote && !(l.status === 'cancelled' && onlySaysCancelled(l.changeNote)) && (
               <p className={cn('mt-3 rounded-lg px-3 py-2 text-sm', l.status === 'cancelled' ? 'bg-watermelon-tint text-watermelon-ink' : 'bg-cantaloupe-tint text-cantaloupe-ink')}>{l.changeNote}</p>
             )}
             <div className="mt-2 divide-y">
