@@ -110,7 +110,7 @@ export function Schedule() {
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-6xl">
+    <div className="mx-auto min-h-dvh w-full max-w-6xl md:max-w-[112rem]">
       {/* Pull-to-refresh indicator */}
       <div
         aria-hidden={ptr.pull === 0 && !ptr.refreshing}
