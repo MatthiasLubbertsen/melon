@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { api, type Account } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
+import { TokenHelp } from '@/components/TokenHelp'
 
 /** Link a Zermelo account: school + link code, or school + API token. */
 export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) => void; initialSchool?: string }) {
@@ -100,6 +101,8 @@ export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) 
           {problem?.field === 'secret' ? problem.text : mode === 'code' ? t('codeHint') : t('tokenHint')}
         </p>
       </div>
+
+      {mode === 'code' && <TokenHelp />}
 
       {problem?.field === 'form' && (
         <p role="alert" className="flex items-center gap-2 rounded-lg bg-watermelon-tint px-3 py-2 text-sm text-watermelon-ink">

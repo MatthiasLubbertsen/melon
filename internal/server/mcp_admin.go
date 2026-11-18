@@ -27,16 +27,20 @@ var adminTools = []mcpTool{
 	},
 	{
 		Name: "admin_find_profiles", Title: "Admin: find profiles",
-		Description: "Find Melon profiles by account name, Zermelo user code (student number or teacher code), school, sign-in number or profile id (usr_...). Empty query lists the most recently active. A profile holds one or more linked Zermelo accounts.",
+		Description: "Find Melon profiles by account name, Zermelo user code (student number or teacher code), school, sign-in number or profile id (usr_...). Empty query lists the most recently active. A profile holds one or more linked Zermelo accounts; `pin` says whether it has a PIN sign-in.",
 		InputSchema: schema(nil, map[string]any{
 			"query": str("Part of a name, a user code, a school portal name or a profile id."),
 			"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many. Defaults to 20."},
+			"pin":   map[string]any{"type": "string", "enum": []string{"yes", "no"}, "description": "Only profiles with (yes) or without (no) a PIN sign-in."},
 		}), Annotations: adminReadOnly,
 		run: func(ctx context.Context, s *Server, pr core.Principal, a mcpArgs) (any, error) {
 			if a.Limit <= 0 || a.Limit > 50 {
 				a.Limit = 20
 			}
-			rows, err := s.Store.Profiles(ctx, a.Query, a.Limit)
+			if a.PIN != "yes" && a.PIN != "no" {
+				a.PIN = ""
+			}
+			rows, err := s.Store.Profiles(ctx, a.Query, a.PIN, a.Limit)
 			if err != nil {
 				return nil, err
 			}

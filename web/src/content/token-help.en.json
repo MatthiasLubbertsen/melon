@@ -1,0 +1,30 @@
+{
+  "title": "How do I get a link code?",
+  "steps": [
+    {
+      "title": "Sign in to the Zermelo Portal",
+      "text": "Go to your school's portal, for example **jfc.zportal.nl**, and sign in as you always do.",
+      "image": null
+    },
+    {
+      "title": "Open Koppel externe applicatie",
+      "text": "Go to **Instellingen → Koppel externe applicatie** (Settings → Link external application). You now see a 12-digit link code.",
+      "image": null
+    },
+    {
+      "title": "Take a screenshot",
+      "text": "You cannot copy the link code. So press **Print Screen** (prnt scrn) while the code is on screen.",
+      "image": null
+    },
+    {
+      "title": "Copy the code from the screenshot",
+      "text": "In the screenshot toolbar, click the **AI text button** (text actions). Select the link code and copy it.",
+      "image": null
+    },
+    {
+      "title": "Paste it here",
+      "text": "Fill in your school above, paste the code under **Link code** and choose **Link**. A link code works once and only for a short while, so do this right away.",
+      "image": null
+    }
+  ]
+}

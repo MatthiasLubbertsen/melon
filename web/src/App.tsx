@@ -14,6 +14,7 @@ import { Welcome } from '@/pages/Welcome'
 
 const Docs = lazy(() => import('@/pages/Docs'))
 const Admin = lazy(() => import('@/pages/Admin'))
+const Info = lazy(() => import('@/pages/Info'))
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1 } } })
 
@@ -53,6 +54,7 @@ export default function App() {
                   <Route path="/settings" element={<NeedsAccount><Settings /></NeedsAccount>} />
                   <Route path="/oauth/authorize" element={<Consent />} />
                   <Route path="/docs" element={<Docs />} />
+                  <Route path="/info" element={<Info />} />
                   <Route path="/admin" element={<NeedsAdmin><Admin /></NeedsAdmin>} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
