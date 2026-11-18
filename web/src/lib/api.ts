@@ -27,6 +27,10 @@ export type Lesson = {
   status: 'scheduled' | 'changed' | 'cancelled'
   changes: ('teacher' | 'location' | 'group' | 'time')[]
   changeNote: string
+  /** What a changed lesson was before, per change, e.g. { location: '112' }. */
+  previous: Partial<Record<'teacher' | 'location' | 'group' | 'time', string>>
+  /** The part of changeNote that the chips with their old values do not say. */
+  changeRest: string
   note: string
   online: boolean
   onlineUrl?: string
