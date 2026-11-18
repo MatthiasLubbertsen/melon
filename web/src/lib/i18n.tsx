@@ -19,6 +19,8 @@ const nl = {
   tryDemo: 'Bekijk de demo',
   linked: 'Gekoppeld: {name}',
   privacyNote: 'Melon leest alleen je rooster. Je token wordt versleuteld opgeslagen.',
+  aboutMore: 'Meer over Melon en privacy',
+  about: 'Over Melon',
   // schedule
   today: 'Vandaag',
   week: 'Week {n}',
@@ -335,6 +337,8 @@ const en: typeof nl = {
   tryDemo: 'Try the demo',
   linked: 'Linked: {name}',
   privacyNote: 'Melon only reads your schedule. Your token is stored encrypted.',
+  aboutMore: 'More about Melon and privacy',
+  about: 'About Melon',
   today: 'Today',
   week: 'Week {n}',
   previousWeek: 'Previous week',
