@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Loader2, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
@@ -65,7 +66,12 @@ export function Welcome() {
       <footer className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
         <p className="flex items-center gap-2">
           <ShieldCheck className="size-4 shrink-0 text-honeydew-ink" />
-          {t('privacyNote')}
+          <span>
+            {t('privacyNote')}{' '}
+            <Link to="/info" className="font-medium text-foreground underline underline-offset-2">
+              {t('aboutMore')}
+            </Link>
+          </span>
         </p>
         <LanguageToggle />
       </footer>

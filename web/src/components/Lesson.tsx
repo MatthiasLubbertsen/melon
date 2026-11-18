@@ -9,6 +9,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } f
 import { Chip } from '@/components/bits'
 import { api, type Lesson } from '@/lib/api'
 import { formatDay, formatTime } from '@/lib/dates'
+import { hyphenate } from '@/lib/hyphenate'
 import { useI18n, type Key } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 
@@ -16,6 +17,15 @@ const changeIcons = { teacher: User, location: DoorOpen, group: Users, time: Arr
 
 function typeLabel(type: string): Key | null {
   return type === 'lesson' ? null : ((['exam', 'activity', 'choice', 'talk'].includes(type) ? `type_${type}` : 'type_other') as Key)
+}
+
+/**
+ * Zermelo's note on a cancelled lesson is usually just "Les vervalt" or "Deze
+ * les vervalt.", which the Vervalt chip already says. Only a note that adds
+ * something (a reason, a replacement) is worth showing next to it.
+ */
+function onlySaysCancelled(note: string): boolean {
+  return /^(de(ze)?\s+)?(les|activiteit|afspraak)\s+(vervalt|is vervallen)\.?$/i.test(note.trim())
 }
 
 /** Status chips: what changed is spelled out, never just a colour. */
@@ -58,7 +68,7 @@ function Chips({ lesson, isNow }: { lesson: Lesson; isNow?: boolean }) {
 }
 
 export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: boolean; onOpen: () => void }) {
-  const { t, locale } = useI18n()
+  const { t, lang, locale } = useI18n()
   const cancelled = lesson.status === 'cancelled'
   const changed = lesson.status === 'changed'
   const where = [lesson.locations.join(', '), lesson.teachers.map((x) => x.name).join(', ')].filter(Boolean).join(' · ')
@@ -68,7 +78,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
       onClick={onOpen}
       data-status={lesson.status}
       className={cn(
-        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:gap-2.5 md:pr-2.5 md:pl-3.5',
         cancelled && 'border-watermelon/50',
         changed && 'border-cantaloupe/60',
         isNow && !cancelled && 'border-honeydew ring-2 ring-honeydew/40',
@@ -76,7 +86,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
     >
       {/* The coloured edge makes changes visible while scrolling. */}
       <span aria-hidden="true" className={cn('absolute inset-y-0 left-0 w-1.5', cancelled ? 'bg-watermelon' : changed ? 'bg-cantaloupe' : isNow ? 'bg-honeydew' : 'bg-transparent')} />
-      <span className="flex w-11 shrink-0 flex-col items-center justify-center text-center">
+      <span className="flex w-11 shrink-0 flex-col items-center justify-center text-center md:w-10">
         {lesson.period && (
           <span className={cn('leading-none', cancelled && 'text-muted-foreground')} aria-label={t('period', { n: lesson.period.from })}>
             <span className="text-xl font-semibold tabular-nums">{t('periodNumber', { n: lesson.period.from })}</span>
@@ -90,8 +100,8 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
         </span>
       </span>
       <span className="grid min-w-0 flex-1 content-center gap-1">
-        <span className={cn('line-clamp-2 text-base leading-snug font-medium break-words', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
-          {lesson.title}
+        <span className={cn('line-clamp-2 text-base leading-snug font-medium break-words hyphens-auto', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
+          {hyphenate(lesson.title, lang)}
         </span>
         {where && <span className={cn('truncate text-sm text-muted-foreground', cancelled && 'line-through')}>{where}</span>}
         {(lesson.status !== 'scheduled' || lesson.type !== 'lesson' || lesson.online || isNow) && (
@@ -143,13 +153,22 @@ export function LessonGroup({ lessons, isNow, onOpen }: { lessons: Lesson[]; isN
         </span>
         <ChevronDown aria-hidden="true" className={cn('size-4 shrink-0 self-center text-muted-foreground transition-transform', expanded && 'rotate-180')} />
       </button>
-      {expanded && (
-        <div className="grid gap-2 border-l-2 border-border pl-3">
-          {lessons.map((l) => (
-            <LessonCard key={l.id} lesson={l} isNow={isNow(l)} onOpen={() => onOpen(l)} />
-          ))}
+      {/* Rows animate from 0fr to 1fr, so the lessons slide open and closed instead of popping in. */}
+      <div
+        inert={!expanded}
+        className={cn(
+          '-mt-2 grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out motion-reduce:transition-none',
+          expanded ? 'mt-0 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className={cn('grid gap-2 border-l-2 border-border pl-3 transition-transform duration-300 ease-out motion-reduce:transition-none', expanded ? 'translate-y-0' : '-translate-y-2')}>
+            {lessons.map((l) => (
+              <LessonCard key={l.id} lesson={l} isNow={isNow(l)} onOpen={() => onOpen(l)} />
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -238,7 +257,7 @@ export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | 
             <div className="flex flex-wrap gap-1.5">
               <Chips lesson={l} />
             </div>
-            {l.changeNote && (
+            {l.changeNote && !(l.status === 'cancelled' && onlySaysCancelled(l.changeNote)) && (
               <p className={cn('mt-3 rounded-lg px-3 py-2 text-sm', l.status === 'cancelled' ? 'bg-watermelon-tint text-watermelon-ink' : 'bg-cantaloupe-tint text-cantaloupe-ink')}>{l.changeNote}</p>
             )}
             <div className="mt-2 divide-y">
