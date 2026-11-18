@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowDown, ChevronLeft, ChevronRight, CloudOff, Megaphone, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
@@ -288,20 +288,34 @@ export function Schedule() {
                   )
                 ) : (
                   <>
-                    {dl.cells.map((c) =>
-                      c.kind === 'free' ? (
-                        <div key={`free-${c.period}`} style={at(lineOf(layout, c.period))} className={place}>
-                          <div className="flex h-full min-h-11 items-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-sm text-muted-foreground">
-                            <span className="font-medium tabular-nums">{t('period', { n: c.period })}</span>
-                            <span>{t('free')}</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div key={c.groups[0][0].id} style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid content-start gap-2')}>
-                          {c.groups.map((g) => lessonGroup(g))}
-                        </div>
-                      ),
-                    )}
+                    {dl.cells.map((c) => {
+                      const last = c.kind === 'free' ? c.period : c.to
+                      const pause = dl.breaks.find((b) => b.after === last)
+                      return (
+                        <Fragment key={c.kind === 'free' ? `free-${c.period}` : c.groups[0][0].id}>
+                          {c.kind === 'free' ? (
+                            <div style={at(lineOf(layout, c.period))} className={place}>
+                              <div className="flex h-full min-h-11 items-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-sm text-muted-foreground">
+                                <span className="font-medium tabular-nums">{t('period', { n: c.period })}</span>
+                                <span>{t('free')}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid content-start gap-2')}>
+                              {c.groups.map((g) => lessonGroup(g))}
+                            </div>
+                          )}
+                          {/* A break sits on the grid line between two periods. */}
+                          {pause && (
+                            <div style={at(lineOf(layout, last) + 1)} className={cn(place, 'flex items-center gap-2 px-1 text-xs text-muted-foreground')}>
+                              <span aria-hidden="true" className="h-px flex-1 bg-border" />
+                              {t('breakFor', { n: pause.minutes })}
+                              <span aria-hidden="true" className="h-px flex-1 bg-border" />
+                            </div>
+                          )}
+                        </Fragment>
+                      )
+                    })}
                     {dl.unplaced.map((g, k) => (
                       <div key={g[0].id} style={at(layout.rows + 1 + k)} className={place}>
                         {lessonGroup(g)}
