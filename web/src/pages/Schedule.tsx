@@ -268,7 +268,11 @@ export function Schedule() {
         <h1 className="px-1 text-sm font-medium first-letter:uppercase md:hidden">{formatDay(day, locale, { weekday: 'long', day: 'numeric', month: 'long' })}</h1>
 
         {/* One grid for the week on desktop: a column per day and a row per period, so the hours line up across days. */}
-        <div style={{ '--cols': days.length } as CSSProperties} className={cn('grid gap-4 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))] md:gap-x-3 md:gap-y-0', query.isPlaceholderData && 'opacity-60')}>
+        {/* Period rows are 1fr and break rows auto: in a grid without a set height, every fr row grows to the tallest one, so all periods get the same height. */}
+        <div
+          style={{ '--cols': days.length, '--rows': ['auto', ...Array.from({ length: layout.rows }, (_, k) => (k % 2 === 0 ? '1fr' : 'auto'))].join(' ') } as CSSProperties}
+          className={cn('grid gap-4 md:grid-cols-[repeat(var(--cols),minmax(0,1fr))] md:grid-rows-[var(--rows)] md:gap-x-3 md:gap-y-0', query.isPlaceholderData && 'opacity-60')}
+        >
           {days.map((d, i) => {
             const ls = byDay.get(d) ?? []
             const dl = layout.days.get(d)!
