@@ -910,7 +910,7 @@ function FeedbackTab() {
       {list.data?.length === 0 && <p className="px-1 text-sm text-muted-foreground">{t('feedbackNone')}</p>}
       <div className={cn('grid gap-2', list.isPlaceholderData && 'opacity-60')}>
         {list.data?.map((f) => (
-          <ThreadRow key={f.id} thread={f} title={f.profileName || f.profileId} onOpen={() => setOpen(f.id)} />
+          <ThreadRow key={f.id} thread={f} title={f.accountName || f.profileName || f.profileId} onOpen={() => setOpen(f.id)} />
         ))}
       </div>
       <Dialog
@@ -931,10 +931,11 @@ function FeedbackTab() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <KindChip kind={th.thread.kind} />
-                  <span className="truncate">{t('feedbackFrom', { name: th.thread.profileName || th.thread.profileId || '?' })}</span>
+                  <span className="truncate">{t('feedbackFrom', { name: th.thread.accountName || th.thread.profileName || th.thread.profileId || '?' })}</span>
                 </DialogTitle>
                 <DialogDescription>
                   <span className="font-mono text-xs">{th.thread.profileId}</span>
+                  {th.thread.accountName && th.thread.profileName && th.thread.accountName !== th.thread.profileName && <> · {t('feedbackProfile', { name: th.thread.profileName })}</>}
                   {th.thread.page && <> · {t('feedbackPage', { page: th.thread.page })}</>}
                 </DialogDescription>
               </DialogHeader>

@@ -139,10 +139,17 @@ async function main() {
     await page.locator('#secret').fill('ouder')
     await page.getByRole('button', { name: 'Koppelen' }).click()
     await page.locator('[data-status]:visible').first().waitFor()
+    // Look a week ahead, then switch child: the day stays where it was.
+    await page.getByRole('button', { name: 'Volgende week' }).click()
+    const picked = await page.locator('[aria-current="date"]:visible').first().textContent()
     await page.getByRole('button', { name: 'Wissel van account' }).click()
     await page.getByRole('menuitem', { name: /Finn Visser/ }).waitFor()
     await shot(`17-parent-children-${theme}`)
-    await page.keyboard.press('Escape')
+    await page.getByRole('menuitem', { name: /Finn Visser/ }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    const after = await page.locator('[aria-current="date"]:visible').first().textContent()
+    if (after !== picked) throw new Error(`day changed on switching child: ${picked} -> ${after}`)
+    await shot(`21-parent-same-day-${theme}`)
 
     // The "linked" toast sits on top of the header on a phone until it fades.
     // Sonner pauses a toast while the mouse is over it, and the mouse is still
