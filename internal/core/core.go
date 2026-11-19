@@ -218,6 +218,52 @@ func (s *Service) healWide(ctx context.Context, a store.Account, token string) s
 	return a
 }
 
+// parentsRechecked remembers when a childless parent account was last looked
+// up, so a parent Zermelo really lists no children for is not probed on every
+// request.
+var parentsRechecked sync.Map
+
+// upgradeParents turns parent accounts linked before Melon knew about
+// children (one account for the parent's own code, which has no schedule)
+// into one account per child, the same as linking again would. It reports
+// whether anything changed.
+func (s *Service) upgradeParents(ctx context.Context, userID string, rows []store.Account) bool {
+	changed := false
+	for _, a := range rows {
+		if a.Role != "parent" || a.OwnerCode != "" {
+			continue
+		}
+		if t, ok := parentsRechecked.Load(a.ID); ok && time.Since(t.(time.Time)) < wideRecheckEvery {
+			continue
+		}
+		parentsRechecked.Store(a.ID, time.Now())
+		token, err := s.Box.Open(a.TokenEnc, a.ID)
+		if err != nil {
+			continue
+		}
+		kids, err := s.Up.Children(ctx, a.School, token, a.ZermeloUser)
+		slog.Info("looked up the children of an old parent account", "account", a.ID, "school", a.School, "children", len(kids), "error", err)
+		if err != nil || len(kids) == 0 {
+			continue
+		}
+		pending := Pending{token: token, parent: a.ZermeloUser}
+		for _, k := range kids {
+			name := k.Name()
+			if name == "" {
+				name = k.Code
+			}
+			pending.accs = append(pending.accs, store.Account{ID: secret.ID("acc"), School: a.School, ZermeloUser: k.Code, DisplayName: name, Role: "parent", TokenExpires: a.TokenExpires, OwnerCode: a.ZermeloUser})
+		}
+		if _, err := s.Save(ctx, userID, pending); err != nil {
+			slog.Warn("cannot save the children of an old parent account", "account", a.ID, "error", err)
+			continue
+		}
+		parentsRechecked.Delete(a.ID)
+		changed = true
+	}
+	return changed
+}
+
 func toAccount(a store.Account) Account {
 	name := a.DisplayName
 	if a.Nickname != "" {
@@ -366,6 +412,13 @@ func (s *Service) Accounts(ctx context.Context, p Principal) ([]Account, error) 
 	rows, err := s.Store.Accounts(ctx, p.UserID)
 	if err != nil {
 		return nil, err
+	}
+	// Only the profile itself (not an API key or app scoped to some accounts)
+	// may swap a parent's old account for its children, since the ids change.
+	if p.All && s.upgradeParents(ctx, p.UserID, rows) {
+		if rows, err = s.Store.Accounts(ctx, p.UserID); err != nil {
+			return nil, err
+		}
 	}
 	out := []Account{}
 	for _, a := range rows {
