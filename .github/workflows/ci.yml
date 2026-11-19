@@ -71,10 +71,11 @@ jobs:
           web/scripts/node_modules/.bin/playwright install --with-deps chromium
       - name: Start Melon in demo mode
         # Demo mode serves generated data only. No real account or secret is
-        # available to this job.
+        # available to this job. The demo parent is an admin so the
+        # screenshots can show the feedback inbox.
         run: |
           chmod +x melon
-          MELON_DEMO=1 MELON_DATA_DIR="$RUNNER_TEMP/melon" MELON_ADDR=127.0.0.1:8080 ./melon &
+          MELON_DEMO=1 MELON_ADMINS=demo:o.devries MELON_DATA_DIR="$RUNNER_TEMP/melon" MELON_ADDR=127.0.0.1:8080 ./melon &
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8080/healthz && break; sleep 1; done
       - name: Take screenshots
         run: OUT=screenshots node web/scripts/screenshots.cjs

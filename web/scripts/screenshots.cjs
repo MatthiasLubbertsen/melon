@@ -141,15 +141,38 @@ async function main() {
     await page.locator('[data-status]:visible').first().waitFor()
     // Look a week ahead, then switch child: the day stays where it was.
     await page.getByRole('button', { name: 'Volgende week' }).click()
-    const picked = await page.locator('[aria-current="date"]:visible').first().textContent()
+    const selectedDay = () => page.locator('[aria-current="date"]:visible').first().getAttribute('data-day')
+    const picked = await selectedDay()
     await page.getByRole('button', { name: 'Wissel van account' }).click()
     await page.getByRole('menuitem', { name: /Finn Visser/ }).waitFor()
     await shot(`17-parent-children-${theme}`)
     await page.getByRole('menuitem', { name: /Finn Visser/ }).click()
     await page.locator('[data-status]:visible').first().waitFor()
-    const after = await page.locator('[aria-current="date"]:visible').first().textContent()
+    const after = await selectedDay()
     if (after !== picked) throw new Error(`day changed on switching child: ${picked} -> ${after}`)
     await shot(`21-parent-same-day-${theme}`)
+
+    // Feedback from a parent is from the parent, about the child that was
+    // open. CI makes the demo parent an admin (MELON_ADMINS), so it can look.
+    await page.getByRole('button', { name: 'Ideeën en bugs' }).click()
+    await page.getByRole('textbox', { name: 'Nieuw bericht' }).fill('Als ik van kind wissel zou de dag gelijk moeten blijven.')
+    await page.getByRole('button', { name: 'Versturen' }).click()
+    await page.getByText('Als ik van kind wissel').first().waitFor()
+    await page.keyboard.press('Escape')
+    await page.getByRole('link', { name: 'Instellingen' }).click()
+    await page.getByRole('link', { name: 'Beheer' }).click()
+    await page.getByRole('tab', { name: /Feedback/ }).click()
+    await page.getByRole('button', { name: /Als ik van kind wissel/ }).first().click()
+    await page.getByText('Van Eva de Vries', { exact: true }).waitFor()
+    await shot(`22-parent-feedback-admin-${theme}`)
+    await page.keyboard.press('Escape')
+
+    // And back from the admin dashboard, the schedule is still on that day.
+    await page.getByRole('link', { name: 'Terug' }).click()
+    await page.getByRole('heading', { name: 'Instellingen' }).waitFor()
+    await page.getByRole('link', { name: 'Terug' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    if ((await selectedDay()) !== picked) throw new Error(`day changed after visiting admin: ${picked} -> ${await selectedDay()}`)
 
     // The "linked" toast sits on top of the header on a phone until it fades.
     // Sonner pauses a toast while the mouse is over it, and the mouse is still

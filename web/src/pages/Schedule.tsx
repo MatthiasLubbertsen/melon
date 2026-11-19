@@ -202,6 +202,7 @@ export function Schedule() {
                 type="button"
                 onClick={() => setDay(d)}
                 aria-current={selected ? 'date' : undefined}
+                data-day={d}
                 className={cn(
                   'relative flex h-14 min-w-0 flex-1 flex-col items-center justify-center rounded-xl text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
                   selected ? 'bg-primary font-semibold text-primary-foreground' : 'hover:bg-muted',

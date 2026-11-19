@@ -283,10 +283,20 @@ func (s *Server) writeThread(w http.ResponseWriter, r *http.Request, id, userID 
 	writeJSON(w, status, map[string]any{"data": map[string]any{"thread": v, "messages": toMessageViews(msgs)}})
 }
 
+// profileName is who is behind a profile: the parent's own name when the
+// accounts are a parent's children, not the first child's.
 func (s *Server) profileName(ctx context.Context, userID string) string {
 	accounts, err := s.Store.Accounts(ctx, userID)
 	if err != nil || len(accounts) == 0 {
 		return ""
+	}
+	for _, a := range accounts {
+		if a.OwnerCode == "" {
+			return a.DisplayName
+		}
+	}
+	if accounts[0].OwnerName != "" {
+		return accounts[0].OwnerName
 	}
 	return accounts[0].DisplayName
 }

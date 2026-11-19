@@ -86,3 +86,24 @@ func TestFeedback(t *testing.T) {
 		t.Fatalf("non-admin listed feedback: %d", code)
 	}
 }
+
+// A parent's feedback is from the parent, about the child that was open.
+func TestFeedbackFromParent(t *testing.T) {
+	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
+	admin.do("POST", "/api/app/demo", "", map[string]any{})
+	parent := admin.fresh()
+	code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken})
+	if code != 201 {
+		t.Fatalf("link parent: %d %v", code, body)
+	}
+	_, body = parent.do("GET", "/api/app/session", "", nil)
+	child := data(t, body)["accounts"].([]any)[1].(map[string]any)
+	if code, body := parent.do("POST", "/api/app/feedback", "", map[string]any{"kind": "idea", "text": "Zelfde dag graag.", "page": "/", "account": child["id"]}); code != 201 {
+		t.Fatalf("create: %d %v", code, body)
+	}
+	_, body = admin.do("GET", "/api/app/admin/feedback", "", nil)
+	f := body["data"].([]any)[0].(map[string]any)
+	if f["profileName"] != "Eva de Vries" || f["accountName"] != child["zermeloName"] {
+		t.Fatalf("from %v about %v, want Eva de Vries about %v", f["profileName"], f["accountName"], child["zermeloName"])
+	}
+}
