@@ -144,6 +144,8 @@ async function main() {
     await shot(`17-parent-children-${theme}`)
     await page.keyboard.press('Escape')
 
+    // The "linked" toast sits on top of the header on a phone until it fades.
+    await page.locator('[data-sonner-toast]').waitFor({ state: 'detached' })
     await page.getByRole('link', { name: 'Instellingen' }).click()
     await page.getByRole('heading', { name: 'Instellingen' }).waitFor()
     await page.getByRole('button', { name: 'Naam geven' }).nth(1).click()
