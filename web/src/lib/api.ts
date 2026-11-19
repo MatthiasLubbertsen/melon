@@ -92,7 +92,7 @@ export type Usage = { day: string; channel: UsageChannel; requests: number; less
 export type SchoolStat = { school: string; profiles: number; accounts: number; students: number; staff: number; teacherNames: number }
 export type AdminOverview = { stats: AdminStats; totals: { requests: number; lessons: number }; since: string; today: string; usage: Usage[]; schools: SchoolStat[] }
 export type AdminAccount = Account & { calendar: boolean; createdAt: string; tokenExpires: string | null }
-export type AdminProfile = { id: string; createdAt: string; lastSeenAt: string | null; login: Login | null; accounts: AdminAccount[]; keys: number; admin: boolean; pin: boolean }
+export type AdminProfile = { id: string; createdAt: string; lastSeenAt: string | null; login: Login | null; accounts: AdminAccount[]; keys: number; admin: boolean; self: boolean; pin: boolean }
 export type AdminProfileDetail = {
   profile: AdminProfile
   pinLock: { fails: number; lockedUntil: string | null } | null

@@ -254,6 +254,7 @@ function UsersTab() {
                       {t('adminBadge')}
                     </Chip>
                   )}
+                  {p.self && <Chip tone="cantaloupe">{t('youBadge')}</Chip>}
                   {p.pin && (
                     <Chip tone="honeydew">
                       <KeyRound />
@@ -351,6 +352,7 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
                     {t('adminBadge')}
                   </Chip>
                 )}
+                {p.self && <Chip tone="cantaloupe">{t('youBadge')}</Chip>}
               </DialogTitle>
               <DialogDescription>
                 <span className="font-mono text-xs">{p.id}</span>
@@ -440,18 +442,25 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
 
             {/* Not DialogFooter: its negative margins eat the bottom padding of a scrolling dialog. */}
             <div className="grid gap-2 border-t pt-4 sm:flex sm:flex-wrap">
-              <Button className="h-11" disabled={impersonate.isPending || p.accounts.length === 0} onClick={() => impersonate.mutate()}>
-                {impersonate.isPending ? <Loader2 className="animate-spin" /> : <Eye />}
-                {t('impersonate')}
-              </Button>
+              {/* Your own profile is the one you are already in: nothing to view as, and it is deleted from Settings. */}
+              {p.self ? (
+                <p className="text-sm text-muted-foreground sm:basis-full">{t('ownProfileNote')}</p>
+              ) : (
+                <Button className="h-11" disabled={impersonate.isPending || p.accounts.length === 0} onClick={() => impersonate.mutate()}>
+                  {impersonate.isPending ? <Loader2 className="animate-spin" /> : <Eye />}
+                  {t('impersonate')}
+                </Button>
+              )}
               <Button variant="outline" className="h-11" disabled={d.sessions === 0} onClick={() => setConfirm('signout')}>
                 <LogOut />
                 {t('signOutAll')}
               </Button>
-              <Button variant="destructive" className="h-11" onClick={() => setConfirm('delete')}>
-                <Trash2 />
-                {t('deleteProfile')}
-              </Button>
+              {!p.self && (
+                <Button variant="destructive" className="h-11" onClick={() => setConfirm('delete')}>
+                  <Trash2 />
+                  {t('deleteProfile')}
+                </Button>
+              )}
             </div>
 
             <AdminPinDialog key={`${p.id}:${pinOpen}`} open={pinOpen} onOpenChange={setPinOpen} profile={p} onSaved={refresh} />

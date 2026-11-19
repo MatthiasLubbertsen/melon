@@ -98,6 +98,14 @@ func TestAdmin(t *testing.T) {
 	if profile == "" {
 		t.Fatalf("search did not find the user: %v", body)
 	}
+	// The admin's own profile is marked, so the app does not offer to view as it.
+	_, body = admin.do("GET", "/api/app/admin/profiles", "", nil)
+	for _, p := range body["data"].([]any) {
+		p := p.(map[string]any)
+		if p["self"] != (p["admin"] == true) {
+			t.Fatalf("self on %v", p)
+		}
+	}
 	_, body = admin.do("GET", "/api/app/admin/profiles/"+profile, "", nil)
 	if keys := data(t, body)["keys"].([]any); len(keys) != 1 || keys[0].(map[string]any)["key"] != nil {
 		t.Fatalf("keys: %v", keys)
