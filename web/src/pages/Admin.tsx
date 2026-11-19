@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Check, Eye, KeyRound, Loader2, LockOpen, LogOut, Plus, RotateCcw, Search, ShieldCheck, Stethoscope, Trash2, TriangleAlert, Wrench } from 'lucide-react'
+import { ArrowLeft, Check, Eye, KeyRound, Loader2, LockOpen, LogOut, Plus, RotateCcw, Search, ShieldCheck, Stethoscope, Trash2, TriangleAlert, Users, Wrench } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -211,8 +211,13 @@ function OverviewTab() {
 
 // ---- Users ----
 
+/** Who the profile is: a parent by their own name, not their children's. */
+function personName(a: AdminProfile['accounts'][number]) {
+  return a.parentCode ? a.parentName || a.parentCode : a.name
+}
+
 function profileName(p: AdminProfile, fallback: string) {
-  return p.accounts[0]?.name ?? fallback
+  return p.accounts[0] ? personName(p.accounts[0]) : fallback
 }
 
 function UsersTab() {
@@ -248,7 +253,7 @@ function UsersTab() {
               <Avatar name={profileName(p, '?')} className="size-10 text-sm" />
               <span className="grid min-w-0 gap-0.5">
                 <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-medium">{p.accounts.map((a) => a.name).join(', ') || t('noAccounts')}</span>
+                  <span className="truncate font-medium">{[...new Set(p.accounts.map(personName))].join(', ') || t('noAccounts')}</span>
                   {p.admin && (
                     <Chip tone="honeydew">
                       <ShieldCheck />
@@ -256,6 +261,12 @@ function UsersTab() {
                     </Chip>
                   )}
                   {p.self && <Chip tone="cantaloupe">{t('youBadge')}</Chip>}
+                  {p.accounts.some((a) => a.parentCode) && (
+                    <Chip tone="honeydew">
+                      <Users />
+                      {t('parent')}
+                    </Chip>
+                  )}
                   {p.pin && (
                     <Chip tone="honeydew">
                       <KeyRound />

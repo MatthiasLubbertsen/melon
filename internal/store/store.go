@@ -124,6 +124,8 @@ var columns = []struct{ table, name, ddl string }{
 	{"accounts", "owner_code", "TEXT NOT NULL DEFAULT ''"},
 	// A name the user gave the account, shown instead of the Zermelo name.
 	{"accounts", "nickname", "TEXT NOT NULL DEFAULT ''"},
+	// The parent's own name on a child's account, since display_name is the child's.
+	{"accounts", "owner_name", "TEXT NOT NULL DEFAULT ''"},
 }
 
 func Open(dataDir string) (*Store, error) {
@@ -350,6 +352,8 @@ type Account struct {
 	// OwnerCode is the parent's own code on a child's account linked through
 	// a parent's token, and empty otherwise.
 	OwnerCode string
+	// OwnerName is the parent's own name on such an account.
+	OwnerName string
 	Nickname  string
 }
 
@@ -363,11 +367,11 @@ func (a Account) TokenUser() string {
 	return a.ZermeloUser
 }
 
-const accountCols = `id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, cal_enc, created_at, owner_code, nickname`
+const accountCols = `id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, cal_enc, created_at, owner_code, nickname, owner_name`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
-	err := row.Scan(&a.ID, &a.UserID, &a.School, &a.ZermeloUser, &a.DisplayName, &a.Role, &a.Wide, &a.TokenEnc, &a.TokenExpires, &a.CalEnc, &a.CreatedAt, &a.OwnerCode, &a.Nickname)
+	err := row.Scan(&a.ID, &a.UserID, &a.School, &a.ZermeloUser, &a.DisplayName, &a.Role, &a.Wide, &a.TokenEnc, &a.TokenExpires, &a.CalEnc, &a.CreatedAt, &a.OwnerCode, &a.Nickname, &a.OwnerName)
 	return a, one(err)
 }
 
@@ -378,12 +382,12 @@ func (s *Store) UpsertAccount(ctx context.Context, a Account, seal func(id strin
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM accounts WHERE user_id = ? AND school = ? AND zermelo_user = ?`, a.UserID, a.School, a.ZermeloUser).Scan(&existing)
 	switch {
 	case err == nil:
-		_, err = s.db.ExecContext(ctx, `UPDATE accounts SET display_name = ?, role = ?, wide = ?, token_enc = ?, token_expires = ?, owner_code = ? WHERE id = ?`,
-			a.DisplayName, a.Role, a.Wide, seal(existing), a.TokenExpires, a.OwnerCode, existing)
+		_, err = s.db.ExecContext(ctx, `UPDATE accounts SET display_name = ?, role = ?, wide = ?, token_enc = ?, token_expires = ?, owner_code = ?, owner_name = ? WHERE id = ?`,
+			a.DisplayName, a.Role, a.Wide, seal(existing), a.TokenExpires, a.OwnerCode, a.OwnerName, existing)
 		return existing, err
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = s.db.ExecContext(ctx, `INSERT INTO accounts (id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, created_at, owner_code) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-			a.ID, a.UserID, a.School, a.ZermeloUser, a.DisplayName, a.Role, a.Wide, seal(a.ID), a.TokenExpires, now(), a.OwnerCode)
+		_, err = s.db.ExecContext(ctx, `INSERT INTO accounts (id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, created_at, owner_code, owner_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+			a.ID, a.UserID, a.School, a.ZermeloUser, a.DisplayName, a.Role, a.Wide, seal(a.ID), a.TokenExpires, now(), a.OwnerCode, a.OwnerName)
 		return a.ID, err
 	default:
 		return "", err
@@ -393,6 +397,13 @@ func (s *Store) UpsertAccount(ctx context.Context, a Account, seal func(id strin
 // SetNickname names an account for its owner; an empty name removes it.
 func (s *Store) SetNickname(ctx context.Context, userID, id, nickname string) error {
 	return affected(s.db.ExecContext(ctx, `UPDATE accounts SET nickname = ? WHERE id = ? AND user_id = ?`, nickname, id, userID))
+}
+
+// SetOwnerName records a parent's own name on their children's accounts in a
+// profile.
+func (s *Store) SetOwnerName(ctx context.Context, userID, school, ownerCode, name string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE accounts SET owner_name = ? WHERE user_id = ? AND school = ? AND owner_code = ?`, name, userID, school, ownerCode)
+	return err
 }
 
 // DropChildren removes a parent's child accounts in a profile that are not

@@ -47,11 +47,43 @@ func TestUpgradeOldParentAccount(t *testing.T) {
 		t.Fatalf("want 2 child accounts, got %v", accs)
 	}
 	for i, want := range []string{"100001", "100005"} {
-		if accs[i].UserCode != want || accs[i].ParentCode != "o.devries" || accs[i].ID == oldID {
+		if accs[i].UserCode != want || accs[i].ParentCode != "o.devries" || accs[i].ParentName != "Eva de Vries" || accs[i].ID == oldID {
 			t.Fatalf("child %d: %+v", i, accs[i])
 		}
 	}
 	if _, err := svc.Schedule(ctx, Principal{UserID: user, All: true}, accs[0].ID, ScheduleQuery{From: time.Date(2026, 11, 9, 0, 0, 0, 0, loc), To: time.Date(2026, 11, 13, 0, 0, 0, 0, loc)}); err != nil {
 		t.Fatalf("child schedule: %v", err)
+	}
+}
+
+// Children upgraded before Melon kept the parent's name get it back.
+func TestNameParentOfOldChildren(t *testing.T) {
+	db, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	box, _ := secret.NewBox([]byte("test-secret-test-secret"))
+	loc, _ := time.LoadLocation("Europe/Amsterdam")
+	svc := &Service{Store: db, Up: zermelo.Demo{Loc: loc}, Cache: zermelo.NewCache(), Box: box, Loc: loc, Demo: true, Usage: NewUsage()}
+	ctx := context.Background()
+	user := secret.ID("usr")
+	if err := db.CreateUser(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	for _, code := range []string{"100001", "100005"} {
+		child := store.Account{ID: secret.ID("acc"), UserID: user, School: "demo", ZermeloUser: code, DisplayName: code, Role: "parent", OwnerCode: "o.devries"}
+		if _, err := db.UpsertAccount(ctx, child, func(id string) []byte { return box.Seal(zermelo.DemoParentToken, id) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	accs, err := svc.Accounts(ctx, Principal{UserID: user, All: true})
+	if err != nil || len(accs) != 2 {
+		t.Fatalf("accounts: %v %v", accs, err)
+	}
+	for _, a := range accs {
+		if a.ParentName != "Eva de Vries" {
+			t.Fatalf("parent name not healed: %+v", a)
+		}
 	}
 }
