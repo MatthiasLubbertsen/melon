@@ -220,7 +220,8 @@ function UsersTab() {
   const f = useFormat()
   const [query, setQuery] = useState('')
   const q = useDebounced(query, 250)
-  const list = useQuery({ queryKey: ['admin', 'profiles', q], queryFn: () => api.admin.profiles(q), placeholderData: (prev) => prev })
+  const [pin, setPin] = useState<'yes' | 'no' | undefined>(undefined)
+  const list = useQuery({ queryKey: ['admin', 'profiles', q, pin], queryFn: () => api.admin.profiles(q, pin), placeholderData: (prev) => prev })
   const [open, setOpen] = useState<string | null>(null)
   return (
     <>
@@ -228,6 +229,13 @@ function UsersTab() {
         <Search className="size-4 shrink-0 text-muted-foreground" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('usersSearch')} aria-label={t('usersSearch')} className="h-full min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground" />
       </label>
+      <div role="group" aria-label={t('pinFilter')} className="flex flex-wrap gap-1.5">
+        {([undefined, 'yes', 'no'] as const).map((v) => (
+          <Button key={v ?? 'all'} variant={pin === v ? 'default' : 'outline'} className="h-9 rounded-full px-3.5" aria-pressed={pin === v} onClick={() => setPin(v)}>
+            {t(v === 'yes' ? 'pinFilterYes' : v === 'no' ? 'pinFilterNo' : 'pinFilterAll')}
+          </Button>
+        ))}
+      </div>
       {list.data?.length === 0 && <p className="px-1 text-sm text-muted-foreground">{t('noUsers')}</p>}
       <ul className={cn('grid gap-2', list.isPlaceholderData && 'opacity-60')}>
         {list.data?.map((p) => (
@@ -247,10 +255,17 @@ function UsersTab() {
                       {t('adminBadge')}
                     </Chip>
                   )}
+                  {p.self && <Chip tone="cantaloupe">{t('youBadge')}</Chip>}
+                  {p.pin && (
+                    <Chip tone="honeydew">
+                      <KeyRound />
+                      {t('pinBadge')}
+                    </Chip>
+                  )}
                 </span>
                 <span className="truncate text-sm text-muted-foreground">
                   {[...new Set(p.accounts.map((a) => a.school))].join(', ') || p.id}
-                  {p.login && ` · ${p.login.userId}`}
+                  {p.login ? ` · ${p.login.userId}` : ` · ${t('noPinShort')}`}
                   {' · '}
                   {p.lastSeenAt ? t('lastSeen', { date: f.day(p.lastSeenAt) }) : t('neverSeen')}
                 </span>
@@ -338,6 +353,7 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
                     {t('adminBadge')}
                   </Chip>
                 )}
+                {p.self && <Chip tone="cantaloupe">{t('youBadge')}</Chip>}
               </DialogTitle>
               <DialogDescription>
                 <span className="font-mono text-xs">{p.id}</span>
@@ -427,18 +443,25 @@ function ProfileDialog({ id, onClose }: { id: string | null; onClose: () => void
 
             {/* Not DialogFooter: its negative margins eat the bottom padding of a scrolling dialog. */}
             <div className="grid gap-2 border-t pt-4 sm:flex sm:flex-wrap">
-              <Button className="h-11" disabled={impersonate.isPending || p.accounts.length === 0} onClick={() => impersonate.mutate()}>
-                {impersonate.isPending ? <Loader2 className="animate-spin" /> : <Eye />}
-                {t('impersonate')}
-              </Button>
+              {/* Your own profile is the one you are already in: nothing to view as, and it is deleted from Settings. */}
+              {p.self ? (
+                <p className="text-sm text-muted-foreground sm:basis-full">{t('ownProfileNote')}</p>
+              ) : (
+                <Button className="h-11" disabled={impersonate.isPending || p.accounts.length === 0} onClick={() => impersonate.mutate()}>
+                  {impersonate.isPending ? <Loader2 className="animate-spin" /> : <Eye />}
+                  {t('impersonate')}
+                </Button>
+              )}
               <Button variant="outline" className="h-11" disabled={d.sessions === 0} onClick={() => setConfirm('signout')}>
                 <LogOut />
                 {t('signOutAll')}
               </Button>
-              <Button variant="destructive" className="h-11" onClick={() => setConfirm('delete')}>
-                <Trash2 />
-                {t('deleteProfile')}
-              </Button>
+              {!p.self && (
+                <Button variant="destructive" className="h-11" onClick={() => setConfirm('delete')}>
+                  <Trash2 />
+                  {t('deleteProfile')}
+                </Button>
+              )}
             </div>
 
             <AdminPinDialog key={`${p.id}:${pinOpen}`} open={pinOpen} onOpenChange={setPinOpen} profile={p} onSaved={refresh} />

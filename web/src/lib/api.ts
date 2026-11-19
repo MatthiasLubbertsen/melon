@@ -27,6 +27,10 @@ export type Lesson = {
   status: 'scheduled' | 'changed' | 'cancelled'
   changes: ('teacher' | 'location' | 'group' | 'time')[]
   changeNote: string
+  /** What a changed lesson was before, per change, e.g. { location: '112' }. */
+  previous: Partial<Record<'teacher' | 'location' | 'group' | 'time', string>>
+  /** The part of changeNote that the chips with their old values do not say. */
+  changeRest: string
   note: string
   online: boolean
   onlineUrl?: string
@@ -105,7 +109,7 @@ export type FeedbackSummary = {
 export type FeedbackMessage = { id: number; fromAdmin: boolean; body: string; at: string }
 export type FeedbackThread = { thread: FeedbackSummary; messages: FeedbackMessage[] }
 export type AdminAccount = Account & { calendar: boolean; createdAt: string; tokenExpires: string | null }
-export type AdminProfile = { id: string; createdAt: string; lastSeenAt: string | null; login: Login | null; accounts: AdminAccount[]; keys: number; admin: boolean }
+export type AdminProfile = { id: string; createdAt: string; lastSeenAt: string | null; login: Login | null; accounts: AdminAccount[]; keys: number; admin: boolean; self: boolean; pin: boolean }
 export type AdminProfileDetail = {
   profile: AdminProfile
   pinLock: { fails: number; lockedUntil: string | null } | null
@@ -222,7 +226,7 @@ export const api = {
     feedbackThread: (id: string) => data(request<FeedbackThread>('GET', `/api/app/admin/feedback/${id}`)),
     feedbackReply: (id: string, text: string) => data(request<FeedbackThread>('POST', `/api/app/admin/feedback/${id}/messages`, { text })),
     feedbackStatus: (id: string, status: 'open' | 'closed') => data(request<FeedbackThread>('PUT', `/api/app/admin/feedback/${id}`, { status })),
-    profiles: (q: string) => data(request<AdminProfile[]>('GET', `/api/app/admin/profiles${qs({ q })}`)),
+    profiles: (q: string, pin?: 'yes' | 'no') => data(request<AdminProfile[]>('GET', `/api/app/admin/profiles${qs({ q, pin })}`)),
     profile: (id: string) => data(request<AdminProfileDetail>('GET', `/api/app/admin/profiles/${id}`)),
     deleteProfile: (id: string) => data(request<void>('DELETE', `/api/app/admin/profiles/${id}`)),
     impersonate: (id: string) => data(request<Session>('POST', `/api/app/admin/profiles/${id}/impersonate`, {})),

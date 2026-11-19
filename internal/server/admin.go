@@ -221,10 +221,14 @@ type adminProfile struct {
 	Accounts   []adminAccount `json:"accounts"`
 	Keys       int            `json:"keys"`
 	Admin      bool           `json:"admin"`
+	// Self marks the admin's own profile, which cannot be viewed as or deleted here.
+	Self bool `json:"self"`
+	// PIN says whether the profile can be signed in to with a user number and PIN.
+	PIN bool `json:"pin"`
 }
 
-func (s *Server) profileView(p store.ProfileSummary) adminProfile {
-	out := adminProfile{ID: p.ID, CreatedAt: time.Unix(p.CreatedAt, 0).UTC(), LastSeenAt: unixPtr(p.LastSeen), Keys: p.Keys, Accounts: []adminAccount{}, Admin: s.Admins.match(p.ID, p.Accounts)}
+func (s *Server) profileView(p store.ProfileSummary, viewer string) adminProfile {
+	out := adminProfile{ID: p.ID, Self: p.ID == viewer, CreatedAt: time.Unix(p.CreatedAt, 0).UTC(), LastSeenAt: unixPtr(p.LastSeen), Keys: p.Keys, Accounts: []adminAccount{}, Admin: s.Admins.match(p.ID, p.Accounts), PIN: p.Login != nil}
 	if p.Login != nil {
 		out.Login = &loginView{UserID: p.Login.Name, School: p.Login.School}
 	}
@@ -239,19 +243,23 @@ func (s *Server) profileView(p store.ProfileSummary) adminProfile {
 	return out
 }
 
-func (s *Server) handleAdminProfiles(w http.ResponseWriter, r *http.Request, _ core.Principal) {
+func (s *Server) handleAdminProfiles(w http.ResponseWriter, r *http.Request, viewer core.Principal) {
 	q := r.URL.Query().Get("q")
 	if len(q) > 64 {
 		q = q[:64]
 	}
-	rows, err := s.Store.Profiles(r.Context(), q, 50)
+	pin := r.URL.Query().Get("pin")
+	if pin != "yes" && pin != "no" {
+		pin = ""
+	}
+	rows, err := s.Store.Profiles(r.Context(), q, pin, 50)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	out := []adminProfile{}
 	for _, p := range rows {
-		out = append(out, s.profileView(p))
+		out = append(out, s.profileView(p, viewer.UserID))
 	}
 	writeData(w, out)
 }
@@ -269,8 +277,8 @@ func (s *Server) profile(w http.ResponseWriter, r *http.Request) (store.ProfileS
 	return p, true
 }
 
-func (s *Server) handleAdminProfile(w http.ResponseWriter, r *http.Request, _ core.Principal) {
-	out, err := s.profileDetail(r.Context(), r.PathValue("id"))
+func (s *Server) handleAdminProfile(w http.ResponseWriter, r *http.Request, viewer core.Principal) {
+	out, err := s.profileDetail(r.Context(), r.PathValue("id"), viewer.UserID)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -280,7 +288,7 @@ func (s *Server) handleAdminProfile(w http.ResponseWriter, r *http.Request, _ co
 
 // profileDetail is everything an admin sees about one profile. Secrets stay
 // out: API keys by hint, Zermelo tokens not at all.
-func (s *Server) profileDetail(ctx context.Context, id string) (map[string]any, error) {
+func (s *Server) profileDetail(ctx context.Context, id, viewer string) (map[string]any, error) {
 	p, err := s.Store.Profile(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, core.ErrNotFound
@@ -327,7 +335,7 @@ func (s *Server) profileDetail(ctx context.Context, id string) (map[string]any, 
 		return nil, err
 	}
 	return map[string]any{
-		"profile":  s.profileView(p),
+		"profile":  s.profileView(p, viewer),
 		"pinLock":  pinLock,
 		"sessions": sessions,
 		"keys":     keyViews,
