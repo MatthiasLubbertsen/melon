@@ -24,7 +24,7 @@ const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md
 
 export function Schedule() {
   const { t, lang, locale, plural, error } = useI18n()
-  const { active } = useSession()
+  const { active, reload } = useSession()
   const account = active!
   const qc = useQueryClient()
 
@@ -226,7 +226,7 @@ export function Schedule() {
           </Banner>
         )}
         {query.isError && !expired && (
-          <Banner tone="watermelon" icon={<CloudOff />} title={error(query.error)} action={<Button variant="destructive" className="h-9" onClick={() => query.refetch()}>{t('retry')}</Button>} />
+          <Banner tone="watermelon" icon={<CloudOff />} title={error(query.error)} action={<Button variant="destructive" className="h-9" onClick={() => { void reload(); void query.refetch() }}>{t('retry')}</Button>} />
         )}
         {stale && fetchedAt && (
           <Banner tone="cantaloupe" icon={<CloudOff />} title={t('staleTitle')}>
