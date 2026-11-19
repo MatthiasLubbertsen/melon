@@ -79,7 +79,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
       onClick={onOpen}
       data-status={lesson.status}
       className={cn(
-        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:gap-2.5 md:pr-2.5 md:pl-3.5',
+        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-2.5 pr-3 pl-4 text-left md:py-2 transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:gap-2.5 md:pr-2.5 md:pl-3.5',
         cancelled && 'border-watermelon/50',
         changed && 'border-cantaloupe/60',
         isNow && !cancelled && 'border-honeydew ring-2 ring-honeydew/40',
@@ -91,7 +91,6 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
         {lesson.period && (
           <span className={cn('leading-none', cancelled && 'text-muted-foreground')} aria-label={t('period', { n: lesson.period.from })}>
             <span className="text-xl font-semibold tabular-nums">{t('periodNumber', { n: lesson.period.from })}</span>
-            <span className="block pt-0.5 text-[0.7rem] font-medium">{t('periodWord')}</span>
           </span>
         )}
         <span className={cn('text-[0.7rem] leading-tight text-muted-foreground tabular-nums', lesson.period && 'mt-1.5')}>
@@ -136,7 +135,7 @@ export function LessonGroup({ lessons, isNow, onOpen }: { lessons: Lesson[]; isN
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
         className={cn(
-          'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-3 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+          'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-2.5 pr-3 pl-4 text-left md:py-2 transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
           changed && 'border-cantaloupe/60',
           lessons.some(isNow) && !cancelled && 'border-honeydew ring-2 ring-honeydew/40',
         )}

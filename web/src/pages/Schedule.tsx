@@ -20,7 +20,7 @@ import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
 
 /** Puts a cell on the desktop week grid at the column and lines its CSS variables name. */
-const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-3'
+const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-2'
 
 export function Schedule() {
   const { t, lang, locale, plural, error } = useI18n()
@@ -116,7 +116,7 @@ export function Schedule() {
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-6xl md:max-w-[112rem]">
+    <div className="mx-auto min-h-dvh w-full max-w-6xl">
       {/* Pull-to-refresh indicator */}
       <div
         aria-hidden={ptr.pull === 0 && !ptr.refreshing}
@@ -301,7 +301,7 @@ export function Schedule() {
                         <Fragment key={c.kind === 'free' ? `free-${c.period}` : c.groups[0][0].id}>
                           {c.kind === 'free' ? (
                             <div style={at(lineOf(layout, c.period))} className={place}>
-                              <div className="flex h-full min-h-11 items-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-sm text-muted-foreground">
+                              <div className="flex h-full min-h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
                                 <span className="font-medium tabular-nums">{t('period', { n: c.period })}</span>
                                 <span>{t('free')}</span>
                               </div>
