@@ -56,3 +56,80 @@ func TestLiveScheduleExpandsConflicts(t *testing.T) {
 		}
 	}
 }
+
+func TestChildren(t *testing.T) {
+	answer := func(w http.ResponseWriter, status int, data string) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"response":{"status":200,"data":` + data + `}}`))
+	}
+	refuse := func(w http.ResponseWriter, _ *http.Request) { answer(w, 403, `[]`) }
+	for _, tc := range []struct {
+		name     string
+		byParent func(w http.ResponseWriter, r *http.Request) // users?familyMember=
+		students func(w http.ResponseWriter, r *http.Request)
+		want     []string
+		names    []string
+	}{
+		{
+			// What a real parent token at a school allows: everything else is refused.
+			name: "users of this parent",
+			byParent: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("familyMember") != "o.jansen" {
+					t.Errorf("users asked for %q", r.URL.RawQuery)
+				}
+				answer(w, 200, `[{"code":"15315","firstName":"Lotte","prefix":null,"lastName":"Jansen","isStudent":true}]`)
+			},
+			students: refuse,
+			want:     []string{"15315"}, names: []string{"Lotte Jansen"},
+		},
+		{
+			name:     "students lists the parent",
+			byParent: refuse,
+			students: func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Query().Get("familyMembers") != "o.jansen" {
+					t.Errorf("students asked for %q", r.URL.RawQuery)
+				}
+				answer(w, 200, `[{"userCode":"15315","firstName":"Lotte","lastName":"Jansen"},{"userCode":"15316","firstName":"Daan","prefix":"van","lastName":"Jansen"}]`)
+			},
+			want: []string{"15315", "15316"}, names: []string{"Lotte Jansen", "Daan van Jansen"},
+		},
+		{
+			name:     "only the parent's own list is readable",
+			byParent: refuse,
+			students: refuse,
+			want:     []string{"15315"}, names: []string{"Lotte Jansen"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/api/v3/users" && r.URL.Query().Has("familyMember"):
+					tc.byParent(w, r)
+				case r.URL.Path == "/api/v3/users":
+					answer(w, 200, `[{"code":"15315","firstName":"Lotte","lastName":"Jansen","isStudent":true}]`)
+				case r.URL.Path == "/api/v3/students":
+					tc.students(w, r)
+				case r.URL.Path == "/api/v3/familymembers":
+					answer(w, 200, `[{"students":["15315"]}]`)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer srv.Close()
+			h := NewHTTP()
+			h.BaseURL = func(string) string { return srv.URL }
+			got, err := h.Children(context.Background(), "jfc", "token", "o.jansen")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %+v", got)
+			}
+			for i := range got {
+				if got[i].Code != tc.want[i] || got[i].Name() != tc.names[i] {
+					t.Errorf("child %d = %s %q", i, got[i].Code, got[i].Name())
+				}
+			}
+		})
+	}
+}

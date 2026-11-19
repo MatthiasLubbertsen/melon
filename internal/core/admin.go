@@ -81,7 +81,7 @@ func (s *Service) CheckAccount(ctx context.Context, id string) (AccountCheck, er
 	}
 	out.TokenWorks = true
 	out.ZermeloUser, out.ZermeloName = me.Code, me.Name()
-	out.SameUser = strings.EqualFold(me.Code, a.ZermeloUser)
+	out.SameUser = strings.EqualFold(me.Code, a.TokenUser())
 	if users, err := s.Up.Users(ctx, a.School, token); err == nil {
 		out.UsersVisible = len(users)
 		out.CanListUsers = len(users) > 1

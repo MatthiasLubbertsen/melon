@@ -93,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/app/accounts", s.handleLink)
 	mux.HandleFunc("POST /api/app/demo", s.handleDemo)
 	mux.HandleFunc("DELETE /api/app/accounts/{account}", s.sessionOnly(s.handleUnlink))
+	mux.HandleFunc("PUT /api/app/accounts/{account}/nickname", s.sessionOnly(s.handleNickname))
 	mux.HandleFunc("GET /api/app/accounts/{account}/calendar", s.sessionOnly(s.handleCalendarGet))
 	mux.HandleFunc("POST /api/app/accounts/{account}/calendar", s.sessionOnly(s.handleCalendarEnable))
 	mux.HandleFunc("DELETE /api/app/accounts/{account}/calendar", s.sessionOnly(s.handleCalendarDisable))

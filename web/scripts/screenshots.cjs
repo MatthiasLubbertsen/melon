@@ -130,6 +130,37 @@ async function main() {
     await context.close()
   }
 
+  // A parent: linking gives one account per child, which can each get a nickname.
+  for (const theme of ['light', 'dark']) {
+    console.log(`parent, ${theme}`)
+    const { context, page, shot } = await session({ viewport: phone, theme })
+    await page.goto(BASE)
+    await page.locator('#school').fill('demo')
+    await page.locator('#secret').fill('ouder')
+    await page.getByRole('button', { name: 'Koppelen' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.getByRole('button', { name: 'Wissel van account' }).click()
+    await page.getByRole('menuitem', { name: /Finn Visser/ }).waitFor()
+    await shot(`17-parent-children-${theme}`)
+    await page.keyboard.press('Escape')
+
+    // The "linked" toast sits on top of the header on a phone until it fades.
+    // Sonner pauses a toast while the mouse is over it, and the mouse is still
+    // up in the header from the account switcher, so move it out of the way.
+    await page.mouse.move(phone.width / 2, phone.height - 10)
+    await page.locator('[data-sonner-toast]').waitFor({ state: 'detached' })
+    await page.getByRole('link', { name: 'Instellingen' }).click()
+    await page.getByRole('heading', { name: 'Instellingen' }).waitFor()
+    await page.getByRole('button', { name: 'Naam geven' }).nth(1).click()
+    await page.locator('#nickname').fill('Jongste')
+    await shot(`18-parent-nickname-${theme}`)
+    await page.getByRole('button', { name: 'Opslaan' }).click()
+    await page.getByText('Jongste').first().waitFor()
+    await page.locator('[data-sonner-toast]').waitFor({ state: 'detached' })
+    await shot(`19-parent-settings-${theme}`)
+    await context.close()
+  }
+
   console.log('desktop')
   const { context, page, shot } = await session({ viewport: desktop, theme: 'light' })
   await page.goto(BASE)

@@ -91,6 +91,13 @@ type Account struct {
 	UserCode string `json:"userCode"`
 	// CanViewOthers is true when the Zermelo token sees more than its owner.
 	CanViewOthers bool `json:"canViewOthers"`
+	// Nickname is the name the user gave the account; Name shows it when set.
+	Nickname string `json:"nickname"`
+	// ZermeloName is the name Zermelo has for the account's person.
+	ZermeloName string `json:"zermeloName"`
+	// ParentCode is set on a child's account linked through a parent: the
+	// parent's own code. UserCode is then the child's.
+	ParentCode string `json:"parentCode,omitempty"`
 }
 
 type Person struct {
@@ -212,13 +219,20 @@ func (s *Service) healWide(ctx context.Context, a store.Account, token string) s
 }
 
 func toAccount(a store.Account) Account {
-	return Account{ID: a.ID, School: a.School, Name: a.DisplayName, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide}
+	name := a.DisplayName
+	if a.Nickname != "" {
+		name = a.Nickname
+	}
+	return Account{ID: a.ID, School: a.School, Name: name, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide, Nickname: a.Nickname, ZermeloName: a.DisplayName, ParentCode: a.OwnerCode}
 }
 
-// Pending is a Zermelo account that was verified but not yet stored.
+// Pending is a Zermelo login that was verified but not yet stored: one
+// account, or for a parent one account per child.
 type Pending struct {
-	acc   store.Account
+	accs  []store.Account
 	token string
+	// parent is the parent's own code when the accounts are their children.
+	parent string
 }
 
 // Link connects a Zermelo account to the profile, from a link code or a token.
@@ -276,20 +290,76 @@ func (s *Service) Verify(ctx context.Context, schoolIn, code, token string) (Pen
 	if name == "" {
 		name = me.Code
 	}
-	return Pending{token: token, acc: store.Account{ID: secret.ID("acc"), School: school, ZermeloUser: me.Code, DisplayName: name, Role: role, Wide: wide, TokenExpires: expires}}, nil
+	if role == "parent" {
+		// A parent has no schedule of their own: each child becomes an account
+		// of its own, all holding the parent's token.
+		kids, err := s.Up.Children(ctx, school, token, me.Code)
+		if err != nil {
+			slog.Warn("cannot list the children of a parent account", "school", school, "error", err)
+		}
+		if len(kids) > 0 {
+			p := Pending{token: token, parent: me.Code}
+			for _, k := range kids {
+				kname := k.Name()
+				if kname == "" {
+					kname = k.Code
+				}
+				p.accs = append(p.accs, store.Account{ID: secret.ID("acc"), School: school, ZermeloUser: k.Code, DisplayName: kname, Role: role, TokenExpires: expires, OwnerCode: me.Code})
+			}
+			return p, nil
+		}
+		wide = false
+	}
+	return Pending{token: token, accs: []store.Account{{ID: secret.ID("acc"), School: school, ZermeloUser: me.Code, DisplayName: name, Role: role, Wide: wide, TokenExpires: expires}}}, nil
 }
 
-// Save stores a verified account under the profile, encrypting its token.
+// Save stores verified accounts under the profile, encrypting the token for
+// each. It returns the first. Linking a parent again updates every child's
+// account and removes children Zermelo no longer lists.
 func (s *Service) Save(ctx context.Context, userID string, pending Pending) (Account, error) {
-	acc := pending.acc
-	acc.UserID = userID
-	id, err := s.Store.UpsertAccount(ctx, acc, func(id string) []byte { return s.Box.Seal(pending.token, id) })
-	if err != nil {
+	var first Account
+	var codes []string
+	for i, acc := range pending.accs {
+		acc.UserID = userID
+		id, err := s.Store.UpsertAccount(ctx, acc, func(id string) []byte { return s.Box.Seal(pending.token, id) })
+		if err != nil {
+			return Account{}, err
+		}
+		acc.ID = id
+		s.Cache.Drop("acct:" + id + ":")
+		codes = append(codes, acc.ZermeloUser)
+		if i == 0 {
+			first = toAccount(acc)
+		}
+	}
+	if pending.parent != "" && len(codes) > 0 {
+		dropped, err := s.Store.DropChildren(ctx, userID, pending.accs[0].School, pending.parent, codes)
+		if err != nil {
+			return Account{}, err
+		}
+		for _, id := range dropped {
+			s.Cache.Drop("acct:" + id + ":")
+		}
+	}
+	return first, nil
+}
+
+// SetNickname gives an account a name of the user's choosing, shown instead
+// of the name from Zermelo. An empty name goes back to Zermelo's.
+func (s *Service) SetNickname(ctx context.Context, p Principal, id, nickname string) (Account, error) {
+	nickname = strings.Join(strings.Fields(nickname), " ")
+	if len([]rune(nickname)) > 40 {
+		return Account{}, Errf(http.StatusBadRequest, "invalid_request", "A nickname is at most 40 characters.")
+	}
+	if !p.allows(id) {
+		return Account{}, ErrNotFound
+	}
+	if err := s.Store.SetNickname(ctx, p.UserID, id, nickname); errors.Is(err, store.ErrNotFound) {
+		return Account{}, ErrNotFound
+	} else if err != nil {
 		return Account{}, err
 	}
-	acc.ID = id
-	s.Cache.Drop("acct:" + id + ":")
-	return toAccount(acc), nil
+	return s.Account(ctx, p, id)
 }
 
 func (s *Service) Accounts(ctx context.Context, p Principal) ([]Account, error) {
@@ -493,6 +563,10 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 		return Schedule{}, Errf(http.StatusBadRequest, "invalid_request", "A schedule request can span at most %d days.", MaxRangeDays)
 	}
 
+	if a.Role == "parent" && a.OwnerCode == "" {
+		// A parent's own code has no schedule; only their children's do.
+		return Schedule{}, Errf(http.StatusNotFound, "no_children", "This parent account has no students linked to it in Zermelo.")
+	}
 	person := Person{Code: a.ZermeloUser, Name: a.DisplayName, Type: "student"}
 	if a.Role == "employee" {
 		person.Type = "employee"

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -135,6 +136,8 @@ type Upstream interface {
 	Announcements(ctx context.Context, school, token string) ([]Announcement, error)
 	// Courses returns the courses the student behind token follows in a school year.
 	Courses(ctx context.Context, school, token string, schoolYear int) ([]Course, error)
+	// Children returns the students a parent (family member) token belongs to.
+	Children(ctx context.Context, school, token, parentCode string) ([]User, error)
 }
 
 var schoolRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -342,6 +345,69 @@ func (h *HTTP) Me(ctx context.Context, school, token string) (User, error) {
 		return User{}, ErrUnauthorized
 	}
 	return out[0], nil
+}
+
+// Children finds a parent's children. A parent's own token may read
+// /users?familyMember=<parent> ("students of a specific parent"); checked
+// against a real parent token, which is refused on every other route. The
+// documented /students and /familymembers routes stay as fallbacks for
+// schools or tokens with other rights. Only what Zermelo answered is logged:
+// counts and errors, no names or codes.
+func (h *HTTP) Children(ctx context.Context, school, token, parentCode string) ([]User, error) {
+	var users []User
+	err0 := h.get(ctx, school, token, "users", url.Values{"familyMember": {parentCode}, "fields": {userFields}}, &users)
+	if err0 == nil && len(users) > 0 {
+		slog.Info("found the children of a parent account", "school", school, "via", "users", "children", len(users))
+		return users, nil
+	}
+	var students []struct {
+		UserCode  string `json:"userCode"`
+		FirstName string `json:"firstName"`
+		Prefix    string `json:"prefix"`
+		LastName  string `json:"lastName"`
+	}
+	err1 := h.get(ctx, school, token, "students", url.Values{"familyMembers": {parentCode}, "fields": {"userCode,firstName,prefix,lastName"}}, &students)
+	if err1 == nil && len(students) > 0 {
+		out := make([]User, 0, len(students))
+		for _, s := range students {
+			out = append(out, User{Code: s.UserCode, FirstName: s.FirstName, Prefix: s.Prefix, LastName: s.LastName, IsStudent: true})
+		}
+		slog.Info("found the children of a parent account", "school", school, "via", "students", "children", len(out))
+		return out, nil
+	}
+	var parents []struct {
+		Students []string `json:"students"`
+	}
+	err2 := h.get(ctx, school, token, "familymembers", url.Values{"userCode": {parentCode}, "fields": {"students"}}, &parents)
+	if err2 == nil && len(parents) > 0 && len(parents[0].Students) > 0 {
+		out := make([]User, 0, len(parents[0].Students))
+		for _, code := range parents[0].Students {
+			u := User{Code: code, IsStudent: true}
+			// Names are a nicety; the code alone still opens the schedule.
+			var named []User
+			if err := h.get(ctx, school, token, "users", url.Values{"code": {code}, "fields": {userFields}}, &named); err == nil && len(named) == 1 {
+				u.FirstName, u.Prefix, u.LastName = named[0].FirstName, named[0].Prefix, named[0].LastName
+			}
+			out = append(out, u)
+		}
+		slog.Info("found the children of a parent account", "school", school, "via", "familymembers", "children", len(out))
+		return out, nil
+	}
+	slog.Info("found no children for a parent account", "school", school, "usersError", errText(err0), "studentsError", errText(err1), "familymembersError", errText(err2))
+	for _, err := range []error{err0, err1, err2} {
+		// A real failure (Zermelo down, token gone) beats "not allowed here".
+		if err != nil && !errors.Is(err, ErrForbidden) {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return redact(err)
 }
 
 func (h *HTTP) Users(ctx context.Context, school, token string) ([]User, error) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"math/rand"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +18,14 @@ const DemoSchool = "demo"
 const (
 	DemoStudentToken = "demo-student"
 	DemoTeacherToken = "demo-teacher"
+	// DemoParentToken is a parent of two demo students.
+	DemoParentToken = "demo-parent"
 )
+
+var demoParent = User{Code: "o.devries", FirstName: "Eva", Prefix: "de", LastName: "Vries", IsFamilyMember: true}
+
+// demoChildren are the codes of the demo parent's children.
+var demoChildren = []string{"100001", "100005"}
 
 // Demo is a fake school with deterministic, week-relative data. It powers the
 // "try the demo" button and CI screenshots, so no real account is ever needed.
@@ -50,6 +58,8 @@ func (d Demo) user(token string) (User, error) {
 		return demoStudents[0], nil
 	case DemoTeacherToken:
 		return demoTeachers[0], nil
+	case DemoParentToken:
+		return demoParent, nil
 	}
 	return User{}, ErrUnauthorized
 }
@@ -60,6 +70,8 @@ func (d Demo) ExchangeCode(_ context.Context, _, code string) (string, error) {
 		return "", ErrBadCode
 	case "docent", "teacher":
 		return DemoTeacherToken, nil
+	case "ouder", "parent":
+		return DemoParentToken, nil
 	}
 	return DemoStudentToken, nil
 }
@@ -80,6 +92,24 @@ func (d Demo) Users(_ context.Context, _, token string) ([]User, error) {
 		return nil, ErrForbidden
 	}
 	return append(append([]User{}, demoTeachers...), demoStudents...), nil
+}
+
+// Children gives the demo parent two of the demo students.
+func (d Demo) Children(_ context.Context, _, token, _ string) ([]User, error) {
+	u, err := d.user(token)
+	if err != nil {
+		return nil, err
+	}
+	if !u.IsFamilyMember {
+		return nil, ErrForbidden
+	}
+	var out []User
+	for _, s := range demoStudents {
+		if slices.Contains(demoChildren, s.Code) {
+			out = append(out, s)
+		}
+	}
+	return out, nil
 }
 
 // Courses gives the demo student one course per demo subject, taught by its teacher.
@@ -158,7 +188,7 @@ func (d Demo) LiveSchedule(_ context.Context, _, token, kind, code, week string)
 	if err != nil {
 		return nil, err
 	}
-	if code != me.Code && !me.IsEmployee {
+	if code != me.Code && !me.IsEmployee && !(me.IsFamilyMember && slices.Contains(demoChildren, code)) {
 		return nil, ErrForbidden
 	}
 	monday, err := WeekStart(week, d.Loc)
@@ -306,4 +336,7 @@ func (r Router) Announcements(ctx context.Context, school, token string) ([]Anno
 }
 func (r Router) Courses(ctx context.Context, school, token string, schoolYear int) ([]Course, error) {
 	return r.pick(school).Courses(ctx, school, token, schoolYear)
+}
+func (r Router) Children(ctx context.Context, school, token, parentCode string) ([]User, error) {
+	return r.pick(school).Children(ctx, school, token, parentCode)
 }

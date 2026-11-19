@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -118,6 +119,11 @@ var columns = []struct{ table, name, ddl string }{
 	// MCP tools. Only counts while the profile is still an admin.
 	{"api_keys", "admin", "INTEGER NOT NULL DEFAULT 0"},
 	{"oauth_grants", "admin", "INTEGER NOT NULL DEFAULT 0"},
+	// Set on a child's account linked through a parent's token: the parent's
+	// own Zermelo code. zermelo_user is then the child's.
+	{"accounts", "owner_code", "TEXT NOT NULL DEFAULT ''"},
+	// A name the user gave the account, shown instead of the Zermelo name.
+	{"accounts", "nickname", "TEXT NOT NULL DEFAULT ''"},
 }
 
 func Open(dataDir string) (*Store, error) {
@@ -341,13 +347,27 @@ type Account struct {
 	TokenExpires int64
 	CalEnc       []byte
 	CreatedAt    int64
+	// OwnerCode is the parent's own code on a child's account linked through
+	// a parent's token, and empty otherwise.
+	OwnerCode string
+	Nickname  string
 }
 
-const accountCols = `id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, cal_enc, created_at`
+// TokenUser is whose token the account holds: the parent for a child's
+// account, else the account's own user. Sign-in numbers and admin rights go
+// by this, never by the child's code.
+func (a Account) TokenUser() string {
+	if a.OwnerCode != "" {
+		return a.OwnerCode
+	}
+	return a.ZermeloUser
+}
+
+const accountCols = `id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, cal_enc, created_at, owner_code, nickname`
 
 func scanAccount(row interface{ Scan(...any) error }) (Account, error) {
 	var a Account
-	err := row.Scan(&a.ID, &a.UserID, &a.School, &a.ZermeloUser, &a.DisplayName, &a.Role, &a.Wide, &a.TokenEnc, &a.TokenExpires, &a.CalEnc, &a.CreatedAt)
+	err := row.Scan(&a.ID, &a.UserID, &a.School, &a.ZermeloUser, &a.DisplayName, &a.Role, &a.Wide, &a.TokenEnc, &a.TokenExpires, &a.CalEnc, &a.CreatedAt, &a.OwnerCode, &a.Nickname)
 	return a, one(err)
 }
 
@@ -358,16 +378,54 @@ func (s *Store) UpsertAccount(ctx context.Context, a Account, seal func(id strin
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM accounts WHERE user_id = ? AND school = ? AND zermelo_user = ?`, a.UserID, a.School, a.ZermeloUser).Scan(&existing)
 	switch {
 	case err == nil:
-		_, err = s.db.ExecContext(ctx, `UPDATE accounts SET display_name = ?, role = ?, wide = ?, token_enc = ?, token_expires = ? WHERE id = ?`,
-			a.DisplayName, a.Role, a.Wide, seal(existing), a.TokenExpires, existing)
+		_, err = s.db.ExecContext(ctx, `UPDATE accounts SET display_name = ?, role = ?, wide = ?, token_enc = ?, token_expires = ?, owner_code = ? WHERE id = ?`,
+			a.DisplayName, a.Role, a.Wide, seal(existing), a.TokenExpires, a.OwnerCode, existing)
 		return existing, err
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = s.db.ExecContext(ctx, `INSERT INTO accounts (id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-			a.ID, a.UserID, a.School, a.ZermeloUser, a.DisplayName, a.Role, a.Wide, seal(a.ID), a.TokenExpires, now())
+		_, err = s.db.ExecContext(ctx, `INSERT INTO accounts (id, user_id, school, zermelo_user, display_name, role, wide, token_enc, token_expires, created_at, owner_code) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+			a.ID, a.UserID, a.School, a.ZermeloUser, a.DisplayName, a.Role, a.Wide, seal(a.ID), a.TokenExpires, now(), a.OwnerCode)
 		return a.ID, err
 	default:
 		return "", err
 	}
+}
+
+// SetNickname names an account for its owner; an empty name removes it.
+func (s *Store) SetNickname(ctx context.Context, userID, id, nickname string) error {
+	return affected(s.db.ExecContext(ctx, `UPDATE accounts SET nickname = ? WHERE id = ? AND user_id = ?`, nickname, id, userID))
+}
+
+// DropChildren removes a parent's child accounts in a profile that are not
+// in keep (children Zermelo no longer lists for that parent), and the
+// parent's childless account. It returns the ids it removed.
+func (s *Store) DropChildren(ctx context.Context, userID, school, ownerCode string, keep []string) ([]string, error) {
+	// The parent's own account from before they had children listed goes too.
+	rows, err := s.db.QueryContext(ctx, `SELECT id, zermelo_user FROM accounts WHERE user_id = ? AND school = ?
+		AND (owner_code = ? OR (owner_code = '' AND role = 'parent' AND zermelo_user = ?))`, userID, school, ownerCode, ownerCode)
+	if err != nil {
+		return nil, err
+	}
+	var drop []string
+	for rows.Next() {
+		var id, code string
+		if err := rows.Scan(&id, &code); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if !slices.Contains(keep, code) {
+			drop = append(drop, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, id := range drop {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM accounts WHERE id = ?`, id); err != nil {
+			return nil, err
+		}
+	}
+	return drop, nil
 }
 
 func (s *Store) Accounts(ctx context.Context, userID string) ([]Account, error) {

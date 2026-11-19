@@ -81,7 +81,7 @@ func (a Admins) match(userID string, accounts []store.Account) bool {
 		return true
 	}
 	for _, acc := range accounts {
-		if a.accounts[[2]string{acc.School, strings.ToLower(acc.ZermeloUser)}] {
+		if a.accounts[[2]string{acc.School, strings.ToLower(acc.TokenUser())}] {
 			return true
 		}
 	}
@@ -483,12 +483,12 @@ func (s *Server) handleAdminSetPIN(w http.ResponseWriter, r *http.Request, p cor
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "Pick one of the accounts linked to this profile to sign in with."))
 		return
 	}
-	l := store.Login{UserID: target.ID, Name: acc.ZermeloUser, School: acc.School, PINHash: s.Core.Box.PINHash(target.ID, body.PIN)}
+	l := store.Login{UserID: target.ID, Name: acc.TokenUser(), School: acc.School, PINHash: s.Core.Box.PINHash(target.ID, body.PIN)}
 	if err := s.Store.SetLogin(r.Context(), l); err != nil {
 		writeErr(w, err)
 		return
 	}
-	s.audit(r.Context(), p, "set_pin", target.ID, fmt.Sprintf("sign in as %s:%s", acc.School, acc.ZermeloUser))
+	s.audit(r.Context(), p, "set_pin", target.ID, fmt.Sprintf("sign in as %s:%s", acc.School, acc.TokenUser()))
 	writeData(w, loginView{UserID: l.Name, School: l.School})
 }
 
