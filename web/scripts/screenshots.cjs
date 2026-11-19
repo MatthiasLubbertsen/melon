@@ -161,6 +161,27 @@ async function main() {
     await context.close()
   }
 
+  // Release notes: a browser that last saw an older note gets everything since,
+  // once. Light shows several at a time, dark a single one.
+  for (const [theme, seen] of [['light', 'breaks'], ['dark', 'parents']]) {
+    console.log(`release notes, ${theme}`)
+    const { context, page, shot } = await session({ viewport: phone, theme })
+    await context.addInitScript(([s]) => localStorage.getItem('melon.releases.seen') ?? localStorage.setItem('melon.releases.seen', s), [seen])
+    await page.goto(BASE)
+    await page.getByRole('button', { name: 'Bekijk de demo' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Nieuw in Melon' })
+    await dialog.waitFor()
+    await shot(`20-release-notes-${theme}`)
+    await dialog.getByRole('button', { name: 'Top, verder' }).click()
+    await dialog.waitFor({ state: 'detached' })
+    // Once seen, it stays away after a reload.
+    await page.reload()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.waitForTimeout(500)
+    if (await dialog.isVisible()) problems.push('release notes showed again after being dismissed')
+    await context.close()
+  }
+
   console.log('desktop')
   const { context, page, shot } = await session({ viewport: desktop, theme: 'light' })
   await page.goto(BASE)
