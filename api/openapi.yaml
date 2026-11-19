@@ -492,7 +492,7 @@ components:
             cancelled: { type: integer }
     Lesson:
       type: object
-      required: [id, date, start, end, period, type, title, subjects, teachers, locations, groups, status, changes, changeNote, note, online, optional, updatedAt]
+      required: [id, date, start, end, period, type, title, subjects, teachers, locations, groups, status, changes, changeNote, previous, changeRest, note, online, optional, updatedAt]
       properties:
         id: { type: string }
         date: { type: string, format: date, description: The school day this lesson is on. }
@@ -525,6 +525,15 @@ components:
           description: "What is different when `status` is `changed`. `time` means the lesson was moved; `teacher` usually means a substitute."
           items: { type: string, enum: [teacher, location, group, time] }
         changeNote: { type: string, description: "Zermelo's own description of the change, in Dutch. May be empty." }
+        previous:
+          type: object
+          description: "What a changed lesson was before, per entry in `changes`, read from `changeNote`. A change can be missing when the note does not say."
+          properties:
+            teacher: { type: string }
+            location: { type: string }
+            group: { type: string }
+            time: { type: string, description: "Where a moved lesson came from, e.g. `vr 11:55` (`Fri 11:55` in English)." }
+        changeRest: { type: string, description: "The part of `changeNote` that `previous` does not already say. Empty when `previous` covers it all." }
         note: { type: string, description: "The scheduler's remark, e.g. what an exam covers. May be empty." }
         online: { type: boolean }
         onlineUrl: { type: string, description: Present when the lesson has an online meeting link. }

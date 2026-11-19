@@ -98,6 +98,14 @@ func TestAdmin(t *testing.T) {
 	if profile == "" {
 		t.Fatalf("search did not find the user: %v", body)
 	}
+	// The admin's own profile is marked, so the app does not offer to view as it.
+	_, body = admin.do("GET", "/api/app/admin/profiles", "", nil)
+	for _, p := range body["data"].([]any) {
+		p := p.(map[string]any)
+		if p["self"] != (p["admin"] == true) {
+			t.Fatalf("self on %v", p)
+		}
+	}
 	_, body = admin.do("GET", "/api/app/admin/profiles/"+profile, "", nil)
 	if keys := data(t, body)["keys"].([]any); len(keys) != 1 || keys[0].(map[string]any)["key"] != nil {
 		t.Fatalf("keys: %v", keys)
@@ -128,6 +136,25 @@ func TestAdmin(t *testing.T) {
 	}
 	if code, _ := user.fresh().do("POST", "/api/app/login", "", map[string]any{"userId": "100001", "pin": "2468"}); code != 200 {
 		t.Fatalf("sign in after unlock: %d", code)
+	}
+	// The list says who has a PIN and can filter on it.
+	hasPIN := func(filter string) map[string]bool {
+		_, body := admin.do("GET", "/api/app/admin/profiles?pin="+filter, "", nil)
+		out := map[string]bool{}
+		for _, p := range body["data"].([]any) {
+			p := p.(map[string]any)
+			out[p["id"].(string)] = p["pin"].(bool)
+		}
+		return out
+	}
+	if all := hasPIN(""); !all[profile] || len(all) != 2 {
+		t.Fatalf("pin flags: %v", all)
+	}
+	if with := hasPIN("yes"); len(with) != 1 || !with[profile] {
+		t.Fatalf("with PIN: %v", with)
+	}
+	if without := hasPIN("no"); len(without) != 1 || without[profile] {
+		t.Fatalf("without PIN: %v", without)
 	}
 
 	// Look at Melon as the user, then come back.
