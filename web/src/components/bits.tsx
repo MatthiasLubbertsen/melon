@@ -16,7 +16,7 @@ const tones: Record<Tone, string> = {
 /** A quiet, tinted label. */
 export function Chip({ tone, children, className }: { tone: Tone; children: ReactNode; className?: string }) {
   return (
-    <span className={cn('inline-flex h-6 max-w-full items-center gap-1 truncate rounded-full px-2.5 text-xs font-medium whitespace-nowrap [&>svg]:size-3.5', tones[tone], className)}>
+    <span className={cn('inline-flex h-6 max-w-full min-w-0 items-center gap-1 overflow-hidden rounded-full px-2.5 text-xs font-medium whitespace-nowrap [&>svg]:size-3.5 [&>svg]:shrink-0', tones[tone], className)}>
       {children}
     </span>
   )

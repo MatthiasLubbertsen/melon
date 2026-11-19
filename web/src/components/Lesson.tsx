@@ -79,7 +79,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
       onClick={onOpen}
       data-status={lesson.status}
       className={cn(
-        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-2.5 pr-3 pl-4 text-left md:py-2 transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:gap-2.5 md:pr-2.5 md:pl-3.5',
+        'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-2.5 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:h-full md:gap-2.5 md:py-2 md:pr-2.5 md:pl-3.5',
         cancelled && 'border-watermelon/50',
         changed && 'border-cantaloupe/60',
         isNow && !cancelled && 'border-honeydew ring-2 ring-honeydew/40',
@@ -99,13 +99,13 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
           {formatTime(lesson.end, locale)}
         </span>
       </span>
-      <span className="grid min-w-0 flex-1 content-center gap-1">
+      <span className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] content-center gap-1">
         <span className={cn('line-clamp-2 text-base leading-snug font-medium break-words hyphens-auto', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
           {hyphenate(lesson.title, lang)}
         </span>
         {where && <span className={cn('truncate text-sm text-muted-foreground', cancelled && 'line-through')}>{where}</span>}
         {(lesson.status !== 'scheduled' || lesson.type !== 'lesson' || lesson.online || isNow) && (
-          <span className="mt-0.5 flex flex-wrap gap-1.5">
+          <span className="mt-0.5 flex min-w-0 flex-wrap gap-1.5">
             <Chips lesson={lesson} isNow={isNow && !cancelled} />
           </span>
         )}
