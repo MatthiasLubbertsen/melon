@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowDown, ChevronLeft, ChevronRight, CloudOff, Megaphone, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, CalendarCheck, ChevronLeft, ChevronRight, CloudOff, Megaphone, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AccountMenu } from '@/components/AccountMenu'
@@ -154,9 +154,10 @@ export function Schedule() {
           <Button variant="ghost" size="icon" className="size-10" aria-label={t('nextWeek')} onClick={() => setDay(addDays(day, 7))}>
             <ChevronRight className="size-5" />
           </Button>
-          <span className="flex-1" />
+          {/* Right next to the arrows, so the way back is where you were clicking. */}
           {day !== defaultDay() && (
-            <Button variant="outline" className="h-9 rounded-full px-3.5" onClick={() => setDay(defaultDay())}>
+            <Button variant="outline" className="ml-1 h-9 rounded-full border-honeydew px-3.5" onClick={() => setDay(defaultDay())}>
+              <CalendarCheck />
               {t('today')}
             </Button>
           )}
