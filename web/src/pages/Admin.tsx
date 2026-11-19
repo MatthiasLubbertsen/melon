@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, Banner, Chip, ConfirmDialog, CopyField } from '@/components/bits'
 import { KindChip, ThreadRow, ThreadView } from '@/components/Feedback'
 import { PinInput } from '@/components/SignInForm'
-import { api, type AdminAccount, type AdminOverview, type AdminProfile, type AdminSubject, type FeedbackThread, type Suggestion, type UsageChannel } from '@/lib/api'
+import { api, type AdminAccount, type AdminOverview, type AdminProfile, type AdminSubject, type FeedbackSummary, type FeedbackThread, type Suggestion, type UsageChannel } from '@/lib/api'
 import { useDebounced } from '@/lib/hooks'
 import { useI18n, type Key } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -214,6 +214,12 @@ function OverviewTab() {
 /** Who the profile is: a parent by their own name, not their children's. */
 function personName(a: AdminProfile['accounts'][number]) {
   return a.parentCode ? a.parentName || a.parentCode : a.name
+}
+
+/** Who sent it, and which child's schedule was open when that was someone else. */
+function feedbackTitle(f: FeedbackSummary) {
+  const who = f.profileName || f.profileId || '?'
+  return f.accountName && f.accountName !== f.profileName ? `${who} · ${f.accountName}` : who
 }
 
 function profileName(p: AdminProfile, fallback: string) {
@@ -910,7 +916,7 @@ function FeedbackTab() {
       {list.data?.length === 0 && <p className="px-1 text-sm text-muted-foreground">{t('feedbackNone')}</p>}
       <div className={cn('grid gap-2', list.isPlaceholderData && 'opacity-60')}>
         {list.data?.map((f) => (
-          <ThreadRow key={f.id} thread={f} title={f.profileName || f.profileId} onOpen={() => setOpen(f.id)} />
+          <ThreadRow key={f.id} thread={f} title={feedbackTitle(f)} onOpen={() => setOpen(f.id)} />
         ))}
       </div>
       <Dialog
@@ -935,6 +941,7 @@ function FeedbackTab() {
                 </DialogTitle>
                 <DialogDescription>
                   <span className="font-mono text-xs">{th.thread.profileId}</span>
+                  {th.thread.accountName && th.thread.profileName && th.thread.accountName !== th.thread.profileName && <> · {t('feedbackAbout', { name: th.thread.accountName })}</>}
                   {th.thread.page && <> · {t('feedbackPage', { page: th.thread.page })}</>}
                 </DialogDescription>
               </DialogHeader>

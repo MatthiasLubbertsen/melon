@@ -115,7 +115,7 @@ export function FeedbackButton() {
   const refresh = () => qc.invalidateQueries({ queryKey: ['feedback'] })
 
   const create = useMutation({
-    mutationFn: () => api.feedback.create(kind, text.trim(), pathname),
+    mutationFn: () => api.feedback.create(kind, text.trim(), pathname, active?.id),
     onSuccess: (th) => {
       setText('')
       toast.success(t('feedbackSent'))

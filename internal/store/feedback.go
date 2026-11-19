@@ -9,13 +9,15 @@ import (
 // Feedback is one suggestion or bug report: a thread between the profile that
 // sent it and the admins.
 type Feedback struct {
-	ID        string
-	UserID    string
-	Kind      string // idea | bug
-	Status    string // open | closed
-	Page      string
-	CreatedAt int64
-	UpdatedAt int64
+	ID     string
+	UserID string
+	Kind   string // idea | bug
+	Status string // open | closed
+	Page   string
+	// AccountName is the linked account that was open when it was sent.
+	AccountName string
+	CreatedAt   int64
+	UpdatedAt   int64
 	// Preview is the first message, for lists.
 	Preview string
 	// Unread is true when the other side wrote since this side last looked.
@@ -51,26 +53,26 @@ CREATE INDEX IF NOT EXISTS feedback_messages_thread ON feedback_messages(feedbac
 
 // feedbackColumns reads a thread for either side: it is unread when the other
 // side wrote a message after the last one this side has seen.
-const feedbackColumns = `f.id, f.user_id, f.kind, f.status, f.page, f.created_at, f.updated_at,
+const feedbackColumns = `f.id, f.user_id, f.kind, f.status, f.page, f.account_name, f.created_at, f.updated_at,
 	COALESCE((SELECT body FROM feedback_messages WHERE feedback_id = f.id ORDER BY id LIMIT 1), ''),
 	EXISTS (SELECT 1 FROM feedback_messages m WHERE m.feedback_id = f.id AND m.from_admin = ? AND m.id > (CASE WHEN ? THEN f.admin_seen ELSE f.user_seen END)),
 	(SELECT COUNT(*) FROM feedback_messages WHERE feedback_id = f.id)`
 
 func scanFeedback(row interface{ Scan(...any) error }) (Feedback, error) {
 	var f Feedback
-	err := row.Scan(&f.ID, &f.UserID, &f.Kind, &f.Status, &f.Page, &f.CreatedAt, &f.UpdatedAt, &f.Preview, &f.Unread, &f.Messages)
+	err := row.Scan(&f.ID, &f.UserID, &f.Kind, &f.Status, &f.Page, &f.AccountName, &f.CreatedAt, &f.UpdatedAt, &f.Preview, &f.Unread, &f.Messages)
 	return f, err
 }
 
 // CreateFeedback opens a thread with its first message.
-func (s *Store) CreateFeedback(ctx context.Context, id, userID, kind, page, body string) error {
+func (s *Store) CreateFeedback(ctx context.Context, id, userID, kind, page, accountName, body string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	n := now()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO feedback (id, user_id, kind, page, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, id, userID, kind, page, n, n); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO feedback (id, user_id, kind, page, account_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, id, userID, kind, page, accountName, n, n); err != nil {
 		return err
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO feedback_messages (feedback_id, from_admin, author, body, at) VALUES (?, 0, ?, ?, ?)`, id, userID, body, n)

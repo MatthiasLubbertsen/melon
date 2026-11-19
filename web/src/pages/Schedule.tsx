@@ -22,13 +22,41 @@ import { cn } from '@/lib/utils'
 /** Puts a cell on the desktop week grid at the column and lines its CSS variables name. */
 const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-3'
 
+// The day being looked at outlives this page: switching to another child
+// remounts it, and so does a trip to the admin dashboard or settings. It is
+// kept for the browser tab, and only for the calendar day it was picked on,
+// so tomorrow starts at today again.
+const DAY_KEY = 'melon.day'
+
+function readDay(): string {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(DAY_KEY) ?? 'null') as { day?: string; on?: string } | null
+    if (saved?.on === today() && typeof saved.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(saved.day)) return saved.day
+  } catch {
+    /* storage blocked or garbage */
+  }
+  return defaultDay()
+}
+
+function useRememberedDay() {
+  const [day, setDay] = useState(readDay)
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DAY_KEY, JSON.stringify({ day, on: today() }))
+    } catch {
+      /* private mode */
+    }
+  }, [day])
+  return [day, setDay] as const
+}
+
 export function Schedule() {
   const { t, lang, locale, plural, error } = useI18n()
   const { active, reload } = useSession()
   const account = active!
   const qc = useQueryClient()
 
-  const [day, setDay] = useState(defaultDay)
+  const [day, setDay] = useRememberedDay()
   const [person, setPerson] = useState<Person | null>(null)
   const [openLesson, setOpenLesson] = useState<Lesson | null>(null)
   const [relinking, setRelinking] = useState(false)
@@ -174,6 +202,7 @@ export function Schedule() {
                 type="button"
                 onClick={() => setDay(d)}
                 aria-current={selected ? 'date' : undefined}
+                data-day={d}
                 className={cn(
                   'relative flex h-14 min-w-0 flex-1 flex-col items-center justify-center rounded-xl text-sm transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
                   selected ? 'bg-primary font-semibold text-primary-foreground' : 'hover:bg-muted',

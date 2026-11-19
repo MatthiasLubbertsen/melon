@@ -10,9 +10,11 @@ func TestFeedback(t *testing.T) {
 	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
 	admin.do("POST", "/api/app/demo", "", map[string]any{})
 	user := admin.fresh()
-	if code, body := user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken}); code != 201 {
+	code, body := user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	if code != 201 {
 		t.Fatalf("link: %d %v", code, body)
 	}
+	account := data(t, body)["id"].(string)
 
 	// Bad input is refused.
 	for _, b := range []map[string]any{{"kind": "rant", "text": "hi"}, {"kind": "bug", "text": "   "}} {
@@ -22,7 +24,7 @@ func TestFeedback(t *testing.T) {
 	}
 
 	// The user reports a bug.
-	code, body := user.do("POST", "/api/app/feedback", "", map[string]any{"kind": "bug", "text": "De weekweergave springt.", "page": "/"})
+	code, body = user.do("POST", "/api/app/feedback", "", map[string]any{"kind": "bug", "text": "De weekweergave springt.", "page": "/", "account": account})
 	if code != 201 {
 		t.Fatalf("create: %d %v", code, body)
 	}
@@ -35,7 +37,7 @@ func TestFeedback(t *testing.T) {
 	}
 	_, body = admin.do("GET", "/api/app/admin/feedback", "", nil)
 	list := body["data"].([]any)
-	if len(list) != 1 || list[0].(map[string]any)["unread"] != true || list[0].(map[string]any)["profileName"] == "" {
+	if len(list) != 1 || list[0].(map[string]any)["unread"] != true || list[0].(map[string]any)["profileName"] == "" || list[0].(map[string]any)["accountName"] == "" {
 		t.Fatalf("admin list: %v", list)
 	}
 	admin.do("GET", "/api/app/admin/feedback/"+id, "", nil)
@@ -82,5 +84,26 @@ func TestFeedback(t *testing.T) {
 	}
 	if code, _ := user.do("GET", "/api/app/admin/feedback", "", nil); code != 403 {
 		t.Fatalf("non-admin listed feedback: %d", code)
+	}
+}
+
+// A parent's feedback is from the parent, about the child that was open.
+func TestFeedbackFromParent(t *testing.T) {
+	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
+	admin.do("POST", "/api/app/demo", "", map[string]any{})
+	parent := admin.fresh()
+	code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken})
+	if code != 201 {
+		t.Fatalf("link parent: %d %v", code, body)
+	}
+	_, body = parent.do("GET", "/api/app/session", "", nil)
+	child := data(t, body)["accounts"].([]any)[1].(map[string]any)
+	if code, body := parent.do("POST", "/api/app/feedback", "", map[string]any{"kind": "idea", "text": "Zelfde dag graag.", "page": "/", "account": child["id"]}); code != 201 {
+		t.Fatalf("create: %d %v", code, body)
+	}
+	_, body = admin.do("GET", "/api/app/admin/feedback", "", nil)
+	f := body["data"].([]any)[0].(map[string]any)
+	if f["profileName"] != "Eva de Vries" || f["accountName"] != child["zermeloName"] {
+		t.Fatalf("from %v about %v, want Eva de Vries about %v", f["profileName"], f["accountName"], child["zermeloName"])
 	}
 }

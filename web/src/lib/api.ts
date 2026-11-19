@@ -115,6 +115,8 @@ export type FeedbackSummary = {
   /** Admin views only. */
   profileId?: string
   profileName?: string
+  /** The linked account that was open when it was sent. */
+  accountName?: string
 }
 export type FeedbackMessage = { id: number; fromAdmin: boolean; body: string; at: string }
 export type FeedbackThread = { thread: FeedbackSummary; messages: FeedbackMessage[] }
@@ -228,7 +230,7 @@ export const api = {
   feedback: {
     list: () => data(request<FeedbackSummary[]>('GET', '/api/app/feedback')),
     get: (id: string) => data(request<FeedbackThread>('GET', `/api/app/feedback/${id}`)),
-    create: (kind: FeedbackKind, text: string, page: string) => data(request<FeedbackThread>('POST', '/api/app/feedback', { kind, text, page })),
+    create: (kind: FeedbackKind, text: string, page: string, account?: string) => data(request<FeedbackThread>('POST', '/api/app/feedback', { kind, text, page, account })),
     reply: (id: string, text: string) => data(request<FeedbackThread>('POST', `/api/app/feedback/${id}/messages`, { text })),
   },
 
