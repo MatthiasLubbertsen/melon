@@ -234,7 +234,7 @@ func (s *Server) profileView(p store.ProfileSummary, viewer string) adminProfile
 	}
 	for _, a := range p.Accounts {
 		out.Accounts = append(out.Accounts, adminAccount{
-			Account:      core.Account{ID: a.ID, School: a.School, Name: a.DisplayName, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide},
+			Account:      core.Account{ID: a.ID, School: a.School, Name: a.DisplayName, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide, Nickname: a.Nickname, ParentCode: a.OwnerCode, ParentName: a.OwnerName},
 			Calendar:     a.CalEnc != nil,
 			CreatedAt:    time.Unix(a.CreatedAt, 0).UTC(),
 			TokenExpires: unixPtr(a.TokenExpires),

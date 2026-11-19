@@ -21,7 +21,9 @@ export function ImpersonationBar() {
     onError: (e) => toast.error(error(e)),
   })
   if (!session.impersonating) return null
-  const name = session.accounts[0]?.name ?? '?'
+  // A parent's accounts are their children's, so name the parent instead.
+  const first = session.accounts[0]
+  const name = first ? (first.parentCode ? first.parentName || first.parentCode : first.name) : '?'
   return (
     <>
       {/* Room at the end of the page, so the bar never covers the last thing on it. */}
