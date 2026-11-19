@@ -45,9 +45,10 @@ function Chips({ lesson, isNow }: { lesson: Lesson; isNow?: boolean }) {
         lesson.changes.map((c) => {
           const Icon = changeIcons[c]
           return (
-            <Chip key={c} tone="cantaloupe">
+            <Chip key={c} tone="cantaloupe" className="max-w-full">
               <Icon />
               {t(`change_${c}` as Key)}
+              {lesson.previous?.[c] && <span className="min-w-0 truncate font-normal">{t('wasValue', { value: lesson.previous[c] })}</span>}
             </Chip>
           )
         })}
@@ -109,7 +110,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
             <Chips lesson={lesson} isNow={isNow && !cancelled} />
           </span>
         )}
-        {lesson.changeNote && !cancelled && <span className="text-sm text-cantaloupe-ink">{lesson.changeNote}</span>}
+        {lesson.changeRest && !cancelled && <span className="text-sm text-cantaloupe-ink">{lesson.changeRest}</span>}
         {lesson.note && lesson.note !== lesson.title && <span className="truncate text-sm text-muted-foreground">{lesson.note}</span>}
       </span>
     </button>
@@ -257,9 +258,11 @@ export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | 
             <div className="flex flex-wrap gap-1.5">
               <Chips lesson={l} />
             </div>
-            {l.changeNote && !(l.status === 'cancelled' && onlySaysCancelled(l.changeNote)) && (
-              <p className={cn('mt-3 rounded-lg px-3 py-2 text-sm', l.status === 'cancelled' ? 'bg-watermelon-tint text-watermelon-ink' : 'bg-cantaloupe-tint text-cantaloupe-ink')}>{l.changeNote}</p>
-            )}
+            {(() => {
+              const note = l.status === 'changed' ? l.changeRest : l.changeNote
+              if (!note || (l.status === 'cancelled' && onlySaysCancelled(note))) return null
+              return <p className={cn('mt-3 rounded-lg px-3 py-2 text-sm', l.status === 'cancelled' ? 'bg-watermelon-tint text-watermelon-ink' : 'bg-cantaloupe-tint text-cantaloupe-ink')}>{note}</p>
+            })()}
             <div className="mt-2 divide-y">
               <Row icon={Clock} label={t('time')} value={`${formatTime(l.start, locale)} – ${formatTime(l.end, locale)}`} />
               <Row icon={MapPin} label={t('location')} value={l.locations.join(', ')} />

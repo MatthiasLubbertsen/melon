@@ -125,20 +125,26 @@ type Period struct {
 }
 
 type Lesson struct {
-	ID         string     `json:"id"`
-	Date       string     `json:"date"`
-	Start      time.Time  `json:"start"`
-	End        time.Time  `json:"end"`
-	Period     *Period    `json:"period"`
-	Type       string     `json:"type"`
-	Title      string     `json:"title"`
-	Subjects   []Subject  `json:"subjects"`
-	Teachers   []Teacher  `json:"teachers"`
-	Locations  []string   `json:"locations"`
-	Groups     []string   `json:"groups"`
-	Status     string     `json:"status"`  // scheduled | changed | cancelled
-	Changes    []string   `json:"changes"` // teacher | location | group | time
-	ChangeNote string     `json:"changeNote"`
+	ID         string    `json:"id"`
+	Date       string    `json:"date"`
+	Start      time.Time `json:"start"`
+	End        time.Time `json:"end"`
+	Period     *Period   `json:"period"`
+	Type       string    `json:"type"`
+	Title      string    `json:"title"`
+	Subjects   []Subject `json:"subjects"`
+	Teachers   []Teacher `json:"teachers"`
+	Locations  []string  `json:"locations"`
+	Groups     []string  `json:"groups"`
+	Status     string    `json:"status"`  // scheduled | changed | cancelled
+	Changes    []string  `json:"changes"` // teacher | location | group | time
+	ChangeNote string    `json:"changeNote"`
+	// Previous holds what a changed lesson was before, per entry in Changes
+	// ("location": "112"), read from ChangeNote. Not every change has one.
+	Previous map[string]string `json:"previous"`
+	// ChangeRest is the part of ChangeNote that Previous does not already say.
+	// Empty when the chips with their old values tell the whole story.
+	ChangeRest string     `json:"changeRest"`
 	Note       string     `json:"note"`
 	Online     bool       `json:"online"`
 	OnlineURL  string     `json:"onlineUrl,omitempty"`
@@ -680,6 +686,10 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 		l.Status = "cancelled"
 	case len(l.Changes) > 0:
 		l.Status = "changed"
+	}
+	l.Previous, l.ChangeRest = map[string]string{}, l.ChangeNote
+	if l.Status == "changed" {
+		l.Previous, l.ChangeRest = parseChangeNote(l.ChangeNote, l.Changes, lang)
 	}
 	if ap.LastModified > 0 {
 		t := time.Unix(ap.LastModified, 0).In(loc)
