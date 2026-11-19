@@ -161,6 +161,31 @@ async function main() {
     await context.close()
   }
 
+  // Release notes: a profile that last saw an older note gets everything
+  // since, once. A new profile (like the demo) starts caught up, so the
+  // screenshots rewind it first. Light shows a long catch-up, dark a single note.
+  for (const [theme, seen] of [['light', 'overlap-cards'], ['dark', 'parents']]) {
+    console.log(`release notes, ${theme}`)
+    const { context, page, shot } = await session({ viewport: phone, theme })
+    await page.goto(BASE)
+    await page.getByRole('button', { name: 'Bekijk de demo' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    const status = await page.evaluate((id) => fetch('/api/app/releases/seen', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then((r) => r.status), seen)
+    if (status !== 204) throw new Error(`rewinding release notes: ${status}`)
+    await page.reload()
+    const dialog = page.getByRole('dialog', { name: 'Nieuw in Melon' })
+    await dialog.waitFor()
+    await shot(`20-release-notes-${theme}`)
+    await dialog.getByRole('button', { name: 'Top, verder' }).click()
+    await dialog.waitFor({ state: 'detached' })
+    // Once seen, it stays away after a reload.
+    await page.reload()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.waitForTimeout(500)
+    if (await dialog.isVisible()) problems.push('release notes showed again after being dismissed')
+    await context.close()
+  }
+
   console.log('desktop')
   const { context, page, shot } = await session({ viewport: desktop, theme: 'light' })
   await page.goto(BASE)

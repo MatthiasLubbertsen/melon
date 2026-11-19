@@ -239,6 +239,11 @@ const nl = {
   feedbackFrom: 'Van {name}',
   feedbackPage: 'Verstuurd vanaf {page}',
   feedbackViewProfile: 'Profiel bekijken',
+  // release notes
+  releasesTitle: 'Nieuw in Melon',
+  releasesIntroOne: 'Dit is er veranderd sinds je Melon voor het laatst opende.',
+  releasesIntroMany: '{n} dingen veranderd sinds je Melon voor het laatst opende.',
+  releasesDone: 'Top, verder',
   statProfiles: 'Profielen',
   statProfilesSub: '+{n} deze week',
   statActive: 'Actief, 7 dagen',
@@ -597,6 +602,11 @@ const en: typeof nl = {
   feedbackFrom: 'From {name}',
   feedbackPage: 'Sent from {page}',
   feedbackViewProfile: 'View profile',
+  // release notes
+  releasesTitle: 'New in Melon',
+  releasesIntroOne: 'This changed since you last opened Melon.',
+  releasesIntroMany: '{n} things changed since you last opened Melon.',
+  releasesDone: 'Got it',
   statProfiles: 'Profiles',
   statProfilesSub: '+{n} this week',
   statActive: 'Active, 7 days',

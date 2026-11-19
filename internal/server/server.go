@@ -89,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/app/login", s.handleSignIn)
 	mux.HandleFunc("POST /api/app/logout", s.sessionOnly(s.handleSignOut))
 	mux.HandleFunc("PUT /api/app/pin", s.sessionOnly(s.handleSetPIN))
+	mux.HandleFunc("PUT /api/app/releases/seen", s.sessionOnly(s.handleReleasesSeen))
 	mux.HandleFunc("DELETE /api/app/pin", s.sessionOnly(s.handleClearPIN))
 	mux.HandleFunc("POST /api/app/accounts", s.handleLink)
 	mux.HandleFunc("POST /api/app/demo", s.handleDemo)

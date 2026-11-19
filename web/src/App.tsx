@@ -6,6 +6,7 @@ import { Toaster } from '@/components/ui/sonner'
 import { FeedbackButton } from '@/components/Feedback'
 import { ImpersonationBar } from '@/components/ImpersonationBar'
 import { Logo } from '@/components/Logo'
+import { ReleaseNotes } from '@/components/ReleaseNotes'
 import { I18nProvider } from '@/lib/i18n'
 import { SessionProvider, useSession } from '@/lib/session'
 import { Consent } from '@/pages/Consent'
@@ -62,6 +63,7 @@ export default function App() {
               </Suspense>
               <ImpersonationBar />
               <FeedbackButton />
+              <ReleaseNotes />
             </SessionProvider>
           </BrowserRouter>
           <Toaster position="top-center" />

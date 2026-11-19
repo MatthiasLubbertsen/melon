@@ -32,7 +32,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 // sessionBody describes the profile to the web app. by is the admin viewing
 // it as its owner, if any.
 func (s *Server) sessionBody(r *http.Request, user, by string) (map[string]any, error) {
-	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}, "login": nil, "admin": false, "impersonating": false}
+	out := map[string]any{"demo": s.Demo, "version": s.Version, "defaultSchool": s.DefaultSchool, "accounts": []core.Account{}, "login": nil, "admin": false, "impersonating": false, "releasesSeen": nil}
 	if user == "" {
 		return out, nil
 	}
@@ -48,6 +48,11 @@ func (s *Server) sessionBody(r *http.Request, user, by string) (map[string]any, 
 		return nil, err
 	}
 	out["accounts"] = accounts
+	seen, err := s.Store.ReleasesSeen(r.Context(), user)
+	if err != nil {
+		return nil, err
+	}
+	out["releasesSeen"] = seen
 	if l, err := s.Store.Login(r.Context(), user); err == nil {
 		out["login"] = loginView{UserID: l.Name, School: l.School}
 	} else if !errors.Is(err, store.ErrNotFound) {
@@ -287,6 +292,30 @@ func (s *Server) handleDeleteGrant(w http.ResponseWriter, r *http.Request, p cor
 
 // handleNickname names one of the profile's accounts, e.g. a parent's two
 // children that would otherwise both show the parent's school.
+// handleReleasesSeen records the newest release note the profile was shown,
+// so it is not shown again on any device. Viewing Melon as someone else
+// leaves it alone: the note is still news to its owner.
+func (s *Server) handleReleasesSeen(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if body.ID == "" || len(body.ID) > 64 {
+		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "id must be a release note id."))
+		return
+	}
+	if _, by := s.sessionInfo(r); by == "" {
+		if err := s.Store.SetReleasesSeen(r.Context(), p.UserID, body.ID); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleNickname(w http.ResponseWriter, r *http.Request, p core.Principal) {
 	var body struct {
 		Nickname string `json:"nickname"`

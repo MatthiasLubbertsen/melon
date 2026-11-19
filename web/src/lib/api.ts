@@ -71,6 +71,8 @@ export type Session = {
   admin: boolean
   /** An admin is looking at Melon as this profile. */
   impersonating: boolean
+  /** The last release note this profile was shown: null if it never recorded one, '' if it has nothing to catch up on. */
+  releasesSeen: string | null
 }
 
 // ---- admin ----
@@ -190,6 +192,7 @@ export const api = {
   signOut: () => data(request<void>('POST', '/api/app/logout', {})),
   setPin: (accountId: string, pin: string) => data(request<Login>('PUT', '/api/app/pin', { accountId, pin })),
   clearPin: () => data(request<void>('DELETE', '/api/app/pin')),
+  releasesSeen: (id: string) => data(request<void>('PUT', '/api/app/releases/seen', { id })),
   link: (body: { school: string; code?: string; token?: string }) => data(request<Account>('POST', '/api/app/accounts', body)),
   demo: () => data(request<Account[]>('POST', '/api/app/demo', {})),
   unlink: (id: string) => data(request<void>('DELETE', `/api/app/accounts/${id}`)),
