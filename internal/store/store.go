@@ -126,6 +126,10 @@ var columns = []struct{ table, name, ddl string }{
 	{"accounts", "nickname", "TEXT NOT NULL DEFAULT ''"},
 	// The parent's own name on a child's account, since display_name is the child's.
 	{"accounts", "owner_name", "TEXT NOT NULL DEFAULT ''"},
+	// The last release note the profile was shown. NULL for profiles from
+	// before release notes existed; new profiles start at '' (nothing to
+	// catch up on).
+	{"users", "releases_seen", "TEXT"},
 }
 
 func Open(dataDir string) (*Store, error) {
@@ -176,8 +180,25 @@ func affected(res sql.Result, err error) error {
 // ---- users & sessions ----
 
 func (s *Store) CreateUser(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO users (id, created_at) VALUES (?, ?)`, id, now())
+	_, err := s.db.ExecContext(ctx, `INSERT INTO users (id, created_at, releases_seen) VALUES (?, ?, '')`, id, now())
 	return err
+}
+
+// ReleasesSeen returns the id of the last release note the profile was
+// shown: nil if it never recorded one, "" if it has nothing to catch up on.
+func (s *Store) ReleasesSeen(ctx context.Context, userID string) (*string, error) {
+	var seen sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT releases_seen FROM users WHERE id = ?`, userID).Scan(&seen); err != nil {
+		return nil, one(err)
+	}
+	if !seen.Valid {
+		return nil, nil
+	}
+	return &seen.String, nil
+}
+
+func (s *Store) SetReleasesSeen(ctx context.Context, userID, id string) error {
+	return affected(s.db.ExecContext(ctx, `UPDATE users SET releases_seen = ? WHERE id = ?`, id, userID))
 }
 
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, ttl time.Duration) error {

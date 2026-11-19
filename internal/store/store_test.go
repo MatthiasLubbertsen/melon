@@ -46,6 +46,10 @@ INSERT INTO api_keys VALUES ('key_a', 'usr_a', 'old', 'kh', 'hint', 1, 0);`)
 	if k, err := s.APIKeyByHash(ctx, "kh"); err != nil || k.UserID != "usr_a" || k.Admin {
 		t.Fatalf("old key: %+v %v", k, err)
 	}
+	// A profile from before release notes has never been shown any.
+	if seen, err := s.ReleasesSeen(ctx, "usr_a"); err != nil || seen != nil {
+		t.Fatalf("old profile releases seen: %v %v", seen, err)
+	}
 	// Opening again is a no-op.
 	s.Close()
 	if s, err = Open(dir); err != nil {

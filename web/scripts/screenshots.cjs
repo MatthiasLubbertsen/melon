@@ -161,14 +161,18 @@ async function main() {
     await context.close()
   }
 
-  // Release notes: a browser that last saw an older note gets everything since,
-  // once. Light shows several at a time, dark a single one.
-  for (const [theme, seen] of [['light', 'breaks'], ['dark', 'parents']]) {
+  // Release notes: a profile that last saw an older note gets everything
+  // since, once. A new profile (like the demo) starts caught up, so the
+  // screenshots rewind it first. Light shows a long catch-up, dark a single note.
+  for (const [theme, seen] of [['light', 'overlap-cards'], ['dark', 'parents']]) {
     console.log(`release notes, ${theme}`)
     const { context, page, shot } = await session({ viewport: phone, theme })
-    await context.addInitScript(([s]) => localStorage.getItem('melon.releases.seen') ?? localStorage.setItem('melon.releases.seen', s), [seen])
     await page.goto(BASE)
     await page.getByRole('button', { name: 'Bekijk de demo' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    const status = await page.evaluate((id) => fetch('/api/app/releases/seen', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then((r) => r.status), seen)
+    if (status !== 204) throw new Error(`rewinding release notes: ${status}`)
+    await page.reload()
     const dialog = page.getByRole('dialog', { name: 'Nieuw in Melon' })
     await dialog.waitFor()
     await shot(`20-release-notes-${theme}`)
