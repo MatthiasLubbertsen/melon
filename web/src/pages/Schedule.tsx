@@ -20,7 +20,7 @@ import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
 
 /** Puts a cell on the desktop week grid at the column and lines its CSS variables name. */
-const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-2'
+const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-3'
 
 export function Schedule() {
   const { t, lang, locale, plural, error } = useI18n()
@@ -116,7 +116,7 @@ export function Schedule() {
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
 
   return (
-    <div className="mx-auto min-h-dvh w-full max-w-6xl">
+    <div className="mx-auto min-h-dvh w-full max-w-6xl 2xl:max-w-[96rem]">
       {/* Pull-to-refresh indicator */}
       <div
         aria-hidden={ptr.pull === 0 && !ptr.refreshing}
@@ -307,13 +307,13 @@ export function Schedule() {
                               </div>
                             </div>
                           ) : (
-                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid content-start gap-2')}>
+                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid gap-2', c.groups.length > 1 && 'content-start')}>
                               {c.groups.map((g) => lessonGroup(g))}
                             </div>
                           )}
                           {/* A break sits on the grid line between two periods. */}
                           {pause && (
-                            <div style={at(lineOf(layout, last) + 1)} className={cn(place, 'flex items-center gap-2 px-1 text-xs text-muted-foreground')}>
+                            <div style={at(lineOf(layout, last) + 1)} className={cn(place, 'flex items-center gap-2 px-1 text-xs leading-none text-muted-foreground')}>
                               <span aria-hidden="true" className="h-px flex-1 bg-border" />
                               {t('breakFor', { n: pause.minutes })}
                               <span aria-hidden="true" className="h-px flex-1 bg-border" />
