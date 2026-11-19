@@ -79,3 +79,24 @@ func TestParentAccount(t *testing.T) {
 		t.Fatalf("PIN for a parent: %d %v", code, body)
 	}
 }
+
+// The admin list and "view as" show a parent's profile under the parent's own
+// name, and searching for the parent finds it.
+func TestAdminSeesParentName(t *testing.T) {
+	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
+	admin.do("POST", "/api/app/demo", "", map[string]any{})
+	parent := admin.fresh()
+	if code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken}); code != 201 {
+		t.Fatalf("link parent: %d %v", code, body)
+	}
+	_, body := admin.do("GET", "/api/app/admin/profiles?q=Eva", "", nil)
+	list := body["data"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("search by parent name: %v", body)
+	}
+	for _, a := range list[0].(map[string]any)["accounts"].([]any) {
+		if a := a.(map[string]any); a["parentCode"] != "o.devries" || a["parentName"] != "Eva de Vries" {
+			t.Fatalf("admin account: %v", a)
+		}
+	}
+}

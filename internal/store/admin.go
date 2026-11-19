@@ -153,10 +153,10 @@ func (s *Store) Profiles(ctx context.Context, query, pin string, limit int) ([]P
 			(SELECT COUNT(*) FROM api_keys WHERE user_id = u.id)
 		FROM users u
 		WHERE (? = '%%' OR u.id LIKE ? ESCAPE '\'
-			OR EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = u.id AND (a.display_name LIKE ? ESCAPE '\' OR a.zermelo_user LIKE ? ESCAPE '\' OR a.school LIKE ? ESCAPE '\'))
+			OR EXISTS (SELECT 1 FROM accounts a WHERE a.user_id = u.id AND (a.display_name LIKE ? ESCAPE '\' OR a.zermelo_user LIKE ? ESCAPE '\' OR a.school LIKE ? ESCAPE '\' OR a.owner_name LIKE ? ESCAPE '\' OR a.owner_code LIKE ? ESCAPE '\'))
 			OR EXISTS (SELECT 1 FROM logins l WHERE l.user_id = u.id AND l.login LIKE ? ESCAPE '\'))
 			AND (? = '' OR (? = 'yes') = EXISTS (SELECT 1 FROM logins l WHERE l.user_id = u.id))
-		ORDER BY seen DESC, u.created_at DESC LIMIT ?`, q, q, q, q, q, q, pin, pin, limit)
+		ORDER BY seen DESC, u.created_at DESC LIMIT ?`, q, q, q, q, q, q, q, q, pin, pin, limit)
 	if err != nil {
 		return nil, err
 	}
