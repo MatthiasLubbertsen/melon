@@ -192,6 +192,15 @@ export function Schedule() {
             )
           })}
         </nav>
+        {/* Desktop day headers live in the sticky header, so the days stay visible while scrolling the week. */}
+        <div aria-hidden="true" className="hidden gap-3 pt-1 pb-2 md:grid md:grid-flow-col md:auto-cols-fr">
+          {days.map((d) => (
+            <div key={d} className={cn('flex min-w-0 items-baseline gap-1.5 rounded-lg px-2 py-1 text-sm font-medium', d === todayStr && 'bg-primary text-primary-foreground')}>
+              <span className="first-letter:uppercase">{formatDay(d, locale, { weekday: 'short' })}</span>
+              <span className={cn('truncate', d !== todayStr && 'text-muted-foreground')}>{formatDay(d, locale, { day: 'numeric', month: 'short' })}</span>
+            </div>
+          ))}
+        </div>
       </header>
 
       <main className="grid gap-3 px-3 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -266,10 +275,6 @@ export function Schedule() {
             const at = (line: number, span = 1) => ({ '--c': i + 1, '--r': line + 1, '--s': span }) as CSSProperties
             return (
               <section key={d} aria-label={formatDay(d, locale, { weekday: 'long', day: 'numeric', month: 'long' })} className={cn('min-w-0 gap-2 md:contents', d === day ? 'grid' : 'hidden')}>
-                <h2 style={at(0)} className={cn(place, 'hidden items-baseline gap-1.5 self-start rounded-lg px-2 py-1 text-sm font-medium md:flex', d === todayStr && 'bg-primary text-primary-foreground')}>
-                  <span className="first-letter:uppercase">{formatDay(d, locale, { weekday: 'short' })}</span>
-                  <span className={d === todayStr ? '' : 'text-muted-foreground'}>{formatDay(d, locale, { day: 'numeric', month: 'short' })}</span>
-                </h2>
                 {loading ? (
                   [0, 1, 2, 3, 4].map((k) => (
                     <div key={k} style={at(2 * k + 1)} className={place}>
