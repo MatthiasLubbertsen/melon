@@ -98,6 +98,8 @@ type Account struct {
 	// ParentCode is set on a child's account linked through a parent: the
 	// parent's own code. UserCode is then the child's.
 	ParentCode string `json:"parentCode,omitempty"`
+	// ParentName is that parent's own name, when Melon knows it.
+	ParentName string `json:"parentName,omitempty"`
 }
 
 type Person struct {
@@ -218,6 +220,32 @@ func (s *Service) healWide(ctx context.Context, a store.Account, token string) s
 	return a
 }
 
+// nameParent looks up the parent's own name for a child's account and stores
+// it on all of that parent's children. It reports whether it did.
+func (s *Service) nameParent(ctx context.Context, userID string, a store.Account) bool {
+	if t, ok := parentsRechecked.Load(a.ID); ok && time.Since(t.(time.Time)) < wideRecheckEvery {
+		return false
+	}
+	parentsRechecked.Store(a.ID, time.Now())
+	token, err := s.Box.Open(a.TokenEnc, a.ID)
+	if err != nil {
+		return false
+	}
+	me, err := s.Up.Me(ctx, a.School, token)
+	if err != nil || me.Code != a.OwnerCode {
+		return false
+	}
+	name := me.Name()
+	if name == "" {
+		name = me.Code
+	}
+	if err := s.Store.SetOwnerName(ctx, userID, a.School, a.OwnerCode, name); err != nil {
+		slog.Warn("cannot save a parent's name", "account", a.ID, "error", err)
+		return false
+	}
+	return true
+}
+
 // parentsRechecked remembers when a childless parent account was last looked
 // up, so a parent Zermelo really lists no children for is not probed on every
 // request.
@@ -229,7 +257,16 @@ var parentsRechecked sync.Map
 // whether anything changed.
 func (s *Service) upgradeParents(ctx context.Context, userID string, rows []store.Account) bool {
 	changed := false
+	named := map[string]bool{}
 	for _, a := range rows {
+		if a.Role == "parent" && a.OwnerCode != "" && a.OwnerName == "" && !named[a.School+"/"+a.OwnerCode] {
+			// Children saved before Melon kept the parent's own name.
+			named[a.School+"/"+a.OwnerCode] = true
+			if s.nameParent(ctx, userID, a) {
+				changed = true
+			}
+			continue
+		}
 		if a.Role != "parent" || a.OwnerCode != "" {
 			continue
 		}
@@ -252,7 +289,7 @@ func (s *Service) upgradeParents(ctx context.Context, userID string, rows []stor
 			if name == "" {
 				name = k.Code
 			}
-			pending.accs = append(pending.accs, store.Account{ID: secret.ID("acc"), School: a.School, ZermeloUser: k.Code, DisplayName: name, Role: "parent", TokenExpires: a.TokenExpires, OwnerCode: a.ZermeloUser})
+			pending.accs = append(pending.accs, store.Account{ID: secret.ID("acc"), School: a.School, ZermeloUser: k.Code, DisplayName: name, Role: "parent", TokenExpires: a.TokenExpires, OwnerCode: a.ZermeloUser, OwnerName: a.DisplayName})
 		}
 		if _, err := s.Save(ctx, userID, pending); err != nil {
 			slog.Warn("cannot save the children of an old parent account", "account", a.ID, "error", err)
@@ -269,7 +306,7 @@ func toAccount(a store.Account) Account {
 	if a.Nickname != "" {
 		name = a.Nickname
 	}
-	return Account{ID: a.ID, School: a.School, Name: name, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide, Nickname: a.Nickname, ZermeloName: a.DisplayName, ParentCode: a.OwnerCode}
+	return Account{ID: a.ID, School: a.School, Name: name, Role: a.Role, UserCode: a.ZermeloUser, CanViewOthers: a.Wide, Nickname: a.Nickname, ZermeloName: a.DisplayName, ParentCode: a.OwnerCode, ParentName: a.OwnerName}
 }
 
 // Pending is a Zermelo login that was verified but not yet stored: one
@@ -350,7 +387,7 @@ func (s *Service) Verify(ctx context.Context, schoolIn, code, token string) (Pen
 				if kname == "" {
 					kname = k.Code
 				}
-				p.accs = append(p.accs, store.Account{ID: secret.ID("acc"), School: school, ZermeloUser: k.Code, DisplayName: kname, Role: role, TokenExpires: expires, OwnerCode: me.Code})
+				p.accs = append(p.accs, store.Account{ID: secret.ID("acc"), School: school, ZermeloUser: k.Code, DisplayName: kname, Role: role, TokenExpires: expires, OwnerCode: me.Code, OwnerName: name})
 			}
 			return p, nil
 		}

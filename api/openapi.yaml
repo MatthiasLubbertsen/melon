@@ -436,6 +436,7 @@ components:
         nickname: { type: string, description: "A name the user gave this account. Empty when they did not." }
         zermeloName: { type: string, description: "The name Zermelo has for the person whose schedule this is.", examples: ["Sam de Vries"] }
         parentCode: { type: string, description: "On a child's account linked through a parent: the parent's own code in Zermelo." }
+        parentName: { type: string, description: "On such an account: the parent's own name, when known." }
     Person:
       type: object
       required: [code, name, type]

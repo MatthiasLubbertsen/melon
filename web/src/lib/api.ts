@@ -14,6 +14,8 @@ export type Account = {
   zermeloName: string
   /** On a child's account linked through a parent: the parent's own code. */
   parentCode?: string
+  /** That parent's own name, when Melon knows it. */
+  parentName?: string
 }
 
 export type Person = { code: string; name: string; type: 'student' | 'employee' }
