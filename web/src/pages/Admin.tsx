@@ -11,8 +11,9 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, Banner, Chip, ConfirmDialog, CopyField } from '@/components/bits'
+import { KindChip, ThreadRow, ThreadView } from '@/components/Feedback'
 import { PinInput } from '@/components/SignInForm'
-import { api, type AdminAccount, type AdminOverview, type AdminProfile, type AdminSubject, type Suggestion, type UsageChannel } from '@/lib/api'
+import { api, type AdminAccount, type AdminOverview, type AdminProfile, type AdminSubject, type FeedbackThread, type Suggestion, type UsageChannel } from '@/lib/api'
 import { useDebounced } from '@/lib/hooks'
 import { useI18n, type Key } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -868,10 +869,85 @@ function LogTab() {
   )
 }
 
+// ---- Feedback ----
+
+function FeedbackTab() {
+  const { t, error } = useI18n()
+  const qc = useQueryClient()
+  const [status, setStatus] = useState<'open' | 'closed' | undefined>('open')
+  const [open, setOpen] = useState<string | null>(null)
+  const list = useQuery({ queryKey: ['admin', 'feedback', status], queryFn: () => api.admin.feedback(status), refetchInterval: 60_000, placeholderData: (prev) => prev })
+  const thread = useQuery({ queryKey: ['admin', 'feedback', 'thread', open], queryFn: () => api.admin.feedbackThread(open!), enabled: open !== null })
+  const done = (th: FeedbackThread) => {
+    qc.setQueryData(['admin', 'feedback', 'thread', th.thread.id], th)
+    qc.invalidateQueries({ queryKey: ['admin', 'feedback'] })
+    qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+  }
+  const reply = useMutation({ mutationFn: (text: string) => api.admin.feedbackReply(open!, text), onSuccess: done, onError: (e) => toast.error(error(e)) })
+  const setThreadStatus = useMutation({ mutationFn: (s: 'open' | 'closed') => api.admin.feedbackStatus(open!, s), onSuccess: done, onError: (e) => toast.error(error(e)) })
+  // Reading a thread marks it read; the list and the tab badge follow.
+  const th = thread.data
+  return (
+    <>
+      <div role="group" aria-label={t('tabFeedback')} className="flex flex-wrap gap-1.5">
+        {(['open', 'closed', undefined] as const).map((v) => (
+          <Button key={v ?? 'all'} variant={status === v ? 'default' : 'outline'} className="h-9 rounded-full px-3.5" aria-pressed={status === v} onClick={() => setStatus(v)}>
+            {t(v === 'open' ? 'feedbackOpen' : v === 'closed' ? 'feedbackClosed' : 'feedbackAll')}
+          </Button>
+        ))}
+      </div>
+      {list.data?.length === 0 && <p className="px-1 text-sm text-muted-foreground">{t('feedbackNone')}</p>}
+      <div className={cn('grid gap-2', list.isPlaceholderData && 'opacity-60')}>
+        {list.data?.map((f) => (
+          <ThreadRow key={f.id} thread={f} title={f.profileName || f.profileId} onOpen={() => setOpen(f.id)} />
+        ))}
+      </div>
+      <Dialog
+        open={open !== null}
+        onOpenChange={(o) => {
+          if (!o) {
+            setOpen(null)
+            qc.invalidateQueries({ queryKey: ['admin', 'feedback'] })
+            qc.invalidateQueries({ queryKey: ['admin', 'overview'] })
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+          {!th ? (
+            <Loader2 className="mx-auto my-6 animate-spin text-muted-foreground" />
+          ) : (
+            <div className="grid min-w-0 gap-3">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <KindChip kind={th.thread.kind} />
+                  <span className="truncate">{t('feedbackFrom', { name: th.thread.profileName || th.thread.profileId || '?' })}</span>
+                </DialogTitle>
+                <DialogDescription>
+                  <span className="font-mono text-xs">{th.thread.profileId}</span>
+                  {th.thread.page && <> · {t('feedbackPage', { page: th.thread.page })}</>}
+                </DialogDescription>
+              </DialogHeader>
+              <ThreadView thread={th} side="admin" otherName={th.thread.profileName || '?'} onSend={(b) => reply.mutateAsync(b)} sending={reply.isPending} />
+              <div className="flex justify-end border-t pt-3">
+                <Button variant="outline" className="h-10" disabled={setThreadStatus.isPending} onClick={() => setThreadStatus.mutate(th.thread.status === 'open' ? 'closed' : 'open')}>
+                  {th.thread.status === 'open' ? <Check /> : <RotateCcw />}
+                  {t(th.thread.status === 'open' ? 'feedbackCloseAction' : 'feedbackReopen')}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 export default function Admin() {
   const { t } = useI18n()
   const { session } = useSession()
   const [tab, setTab] = useState('overview')
+  const overview = useQuery({ queryKey: ['admin', 'overview'], queryFn: api.admin.overview, enabled: session.admin })
+  const unread = overview.data?.unreadFeedback ?? 0
   if (!session.admin) return null
   return (
     <div className="mx-auto min-h-dvh w-full max-w-3xl px-3 pt-[max(0.5rem,env(safe-area-inset-top))] pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6">
@@ -886,6 +962,10 @@ export default function Admin() {
           <TabsTrigger value="overview">{t('tabOverview')}</TabsTrigger>
           <TabsTrigger value="users">{t('tabUsers')}</TabsTrigger>
           <TabsTrigger value="names">{t('tabNames')}</TabsTrigger>
+          <TabsTrigger value="feedback">
+            {t('tabFeedback')}
+            {unread > 0 && <span className="ml-1 grid h-5 min-w-5 place-items-center rounded-full bg-watermelon px-1 text-xs font-semibold text-white tabular-nums">{unread}</span>}
+          </TabsTrigger>
           <TabsTrigger value="log">{t('tabLog')}</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="grid gap-4">
@@ -898,6 +978,9 @@ export default function Admin() {
           <SuggestionsSection />
           <SchoolTeachersSection />
           <GlobalSubjectsSection />
+        </TabsContent>
+        <TabsContent value="feedback" className="grid gap-3">
+          <FeedbackTab />
         </TabsContent>
         <TabsContent value="log" className="grid gap-2">
           <LogTab />

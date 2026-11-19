@@ -90,7 +90,24 @@ export type AdminStats = {
 export type UsageChannel = 'session' | 'api_key' | 'oauth' | 'calendar' | 'admin'
 export type Usage = { day: string; channel: UsageChannel; requests: number; lessons: number }
 export type SchoolStat = { school: string; profiles: number; accounts: number; students: number; staff: number; teacherNames: number }
-export type AdminOverview = { stats: AdminStats; totals: { requests: number; lessons: number }; since: string; today: string; usage: Usage[]; schools: SchoolStat[] }
+export type AdminOverview = { stats: AdminStats; totals: { requests: number; lessons: number }; since: string; today: string; usage: Usage[]; schools: SchoolStat[]; unreadFeedback: number }
+export type FeedbackKind = 'idea' | 'bug'
+export type FeedbackSummary = {
+  id: string
+  kind: FeedbackKind
+  status: 'open' | 'closed'
+  page: string
+  createdAt: string
+  updatedAt: string
+  preview: string
+  unread: boolean
+  messages: number
+  /** Admin views only. */
+  profileId?: string
+  profileName?: string
+}
+export type FeedbackMessage = { id: number; fromAdmin: boolean; body: string; at: string }
+export type FeedbackThread = { thread: FeedbackSummary; messages: FeedbackMessage[] }
 export type AdminAccount = Account & { calendar: boolean; createdAt: string; tokenExpires: string | null }
 export type AdminProfile = { id: string; createdAt: string; lastSeenAt: string | null; login: Login | null; accounts: AdminAccount[]; keys: number; admin: boolean; self: boolean; pin: boolean }
 export type AdminProfileDetail = {
@@ -196,8 +213,19 @@ export const api = {
   grants: () => data(request<Grant[]>('GET', '/api/app/grants')),
   deleteGrant: (id: string) => data(request<void>('DELETE', `/api/app/grants/${id}`)),
 
+  feedback: {
+    list: () => data(request<FeedbackSummary[]>('GET', '/api/app/feedback')),
+    get: (id: string) => data(request<FeedbackThread>('GET', `/api/app/feedback/${id}`)),
+    create: (kind: FeedbackKind, text: string, page: string) => data(request<FeedbackThread>('POST', '/api/app/feedback', { kind, text, page })),
+    reply: (id: string, text: string) => data(request<FeedbackThread>('POST', `/api/app/feedback/${id}/messages`, { text })),
+  },
+
   admin: {
     overview: () => data(request<AdminOverview>('GET', '/api/app/admin/overview')),
+    feedback: (status?: 'open' | 'closed') => data(request<FeedbackSummary[]>('GET', `/api/app/admin/feedback${qs({ status })}`)),
+    feedbackThread: (id: string) => data(request<FeedbackThread>('GET', `/api/app/admin/feedback/${id}`)),
+    feedbackReply: (id: string, text: string) => data(request<FeedbackThread>('POST', `/api/app/admin/feedback/${id}/messages`, { text })),
+    feedbackStatus: (id: string, status: 'open' | 'closed') => data(request<FeedbackThread>('PUT', `/api/app/admin/feedback/${id}`, { status })),
     profiles: (q: string, pin?: 'yes' | 'no') => data(request<AdminProfile[]>('GET', `/api/app/admin/profiles${qs({ q, pin })}`)),
     profile: (id: string) => data(request<AdminProfileDetail>('GET', `/api/app/admin/profiles/${id}`)),
     deleteProfile: (id: string) => data(request<void>('DELETE', `/api/app/admin/profiles/${id}`)),

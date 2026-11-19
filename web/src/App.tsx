@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
+import { FeedbackButton } from '@/components/Feedback'
 import { ImpersonationBar } from '@/components/ImpersonationBar'
 import { Logo } from '@/components/Logo'
 import { I18nProvider } from '@/lib/i18n'
@@ -60,6 +61,7 @@ export default function App() {
                 </Routes>
               </Suspense>
               <ImpersonationBar />
+              <FeedbackButton />
             </SessionProvider>
           </BrowserRouter>
           <Toaster position="top-center" />
