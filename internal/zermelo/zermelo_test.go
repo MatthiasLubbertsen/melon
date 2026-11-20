@@ -57,6 +57,50 @@ func TestLiveScheduleExpandsConflicts(t *testing.T) {
 	}
 }
 
+// A live schedule where an OO lesson dropped out, as jfc's Zermelo sent it for
+// Tuesday 24 Nov 2026: an empty, cancelled slot (status 4001, "Inschrijven niet
+// mogelijk") holding the cancelled lesson (4007 "uitgevallen", 4009 "door iemand
+// anders bepaald"). Next to it, an empty slot that still offers a lesson to
+// choose from.
+const liveScheduleWithDroppedLesson = `{"response":{"status":200,"data":[{"week":"202648","appointments":[
+	{"status":[{"code":4001,"nl":"Inschrijven niet mogelijk.","en":"Enrollment not possible."}],
+	 "actions":[
+		{"appointment":{"start":1795504500,"end":1795507500,"cancelled":true,"plannedAttendance":false,"studentEnrolled":false,"allowedActions":"none","optional":false,"attendanceOverruled":true,"appointmentType":"lesson","scheduleLastModified":1795161991,"online":false,"onlineLocationUrl":null,"id":30427195,"appointmentInstance":1945284,"startTimeSlot":1,"endTimeSlot":1,"subjects":["oo"],"groups":["ta3.oo2"],"locations":["165"],"teachers":["brp"],"timeChanged":false,"groupChanged":false,"locationChanged":false,"teacherChanged":false,"changeDescription":"Les vervalt","schedulerRemark":"","content":null},
+		 "status":[{"code":4007,"nl":"De les/afspraak is uitgevallen."},{"code":4009,"nl":"Dit is door iemand anders bepaald."}],
+		 "allowed":false}
+	 ],
+	 "start":1795504500,"end":1795507500,"cancelled":true,"appointmentType":"lesson","online":false,"optional":false,"appointmentInstance":null,"startTimeSlot":1,"endTimeSlot":1,
+	 "subjects":[],"groups":[],"locations":[],"teachers":[],"onlineLocationUrl":null,"teacherChanged":null,"locationChanged":null,"groupChanged":null,"timeChanged":null,"changeDescription":null,"scheduleLastModified":null,"schedulerRemark":null,"content":null,"id":null},
+	{"id":null,"appointmentType":"choice","startTimeSlot":2,"endTimeSlot":2,"start":1795507500,"end":1795510500,"subjects":[],"actions":[
+		{"appointment":{"id":30428258,"appointmentType":"lesson","cancelled":false,"startTimeSlot":2,"endTimeSlot":2,"start":1795507500,"end":1795510500,"subjects":["oo"]}}
+	]}
+]}]}}`
+
+func TestLiveScheduleShowsDroppedLessonInEmptySlot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(liveScheduleWithDroppedLesson))
+	}))
+	defer srv.Close()
+
+	h := NewHTTP()
+	h.BaseURL = func(string) string { return srv.URL }
+	got, err := h.LiveSchedule(context.Background(), "jfc", "token", "student", "15315", "202648")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d appointments, want 2: %+v", len(got), got)
+	}
+	// The empty slot became the lesson that dropped out, still cancelled.
+	if l := got[0]; l.ID != 30427195 || !l.Cancelled || len(l.Subjects) != 1 || l.Subjects[0] != "oo" || len(l.Locations) != 1 || l.Locations[0] != "165" {
+		t.Errorf("dropped-out slot = %+v, want the cancelled oo lesson in 165", l)
+	}
+	// A slot that still offers a choice is not turned into that option.
+	if l := got[1]; l.ID != 0 || l.Type != "choice" {
+		t.Errorf("open choice slot = %+v, want it left as the choice placeholder", l)
+	}
+}
+
 func TestChildren(t *testing.T) {
 	answer := func(w http.ResponseWriter, status int, data string) {
 		w.WriteHeader(status)
