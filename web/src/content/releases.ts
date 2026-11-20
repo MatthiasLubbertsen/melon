@@ -1,4 +1,4 @@
-import { CalendarRange, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
+import { CalendarRange, CalendarX, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'dropped-lesson-named',
+    date: '2026-11-20',
+    icon: CalendarX,
+    nl: 'Valt een les uit waarvoor je was ingeschreven, dan zie je nu welk vak het was.',
+    en: 'When a lesson you signed up for is cancelled, you now see which subject it was.',
+  },
   {
     id: 'week-grid-tighter',
     date: '2026-11-19',
