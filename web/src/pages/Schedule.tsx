@@ -158,11 +158,11 @@ export function Schedule() {
 
   // Swipe left/right to change day on touch screens.
   const swipe = useRef<{ x: number; y: number } | null>(null)
-  const onTouchStart = (e: React.TouchEvent) => (swipe.current = picking ? null : { x: e.touches[0].clientX, y: e.touches[0].clientY })
+  const onTouchStart = (e: React.TouchEvent) => (swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY })
   const onTouchEnd = (e: React.TouchEvent) => {
     const s = swipe.current
     swipe.current = null
-    if (!s) return
+    if (!s || held.current) return
     const dx = e.changedTouches[0].clientX - s.x
     const dy = e.changedTouches[0].clientY - s.y
     if (Math.abs(dx) < 70 || Math.abs(dx) < Math.abs(dy) * 2) return
@@ -179,36 +179,93 @@ export function Schedule() {
     for (const l of lessons) if (!isDetention(l)) for (const s of l.subjects) if (!seen.has(s.code.toLowerCase())) seen.set(s.code.toLowerCase(), s.name)
     return [...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, locale))
   }, [lessons, locale])
-  // Picking a detention's periods: press on a period of the schedule and drag over the others, within one day.
+  // Picking a detention's periods, within one day. With a mouse: press and drag. On a touch screen the
+  // page has to keep scrolling and swiping to other days, so a tap picks a period (a second tap stretches
+  // it to there) and a long press starts a drag, like moving an event in a calendar app.
   const slots = useMemo(() => detentionSlots(layout.times), [layout.times])
   const anchor = useRef<PickedPeriods | null>(null)
-  useEffect(() => {
-    const stop = () => (anchor.current = null)
-    window.addEventListener('pointerup', stop)
-    window.addEventListener('pointercancel', stop)
-    return () => {
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-    }
-  }, [])
+  /** A long press is dragging: the page holds still and a sideways move is no swipe. */
+  const held = useRef(false)
+  const mainRef = useRef<HTMLElement>(null)
   const periodsAt = (x: number, y: number): PickedPeriods | null => {
     const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-pick-day]')
     return el ? { date: el.dataset.pickDay!, from: Number(el.dataset.pickFrom), to: Number(el.dataset.pickTo) } : null
   }
+  const stretch = (x: number, y: number) => {
+    const a = anchor.current
+    const at = a && periodsAt(x, y)
+    if (!a || !at || at.date !== a.date) return
+    setDraft({ date: a.date, from: Math.min(a.from, at.from), to: Math.max(a.to, at.to) })
+  }
+  useEffect(() => {
+    const stop = () => (anchor.current = null)
+    window.addEventListener('pointerup', stop)
+    return () => window.removeEventListener('pointerup', stop)
+  }, [])
+  useEffect(() => {
+    const main = mainRef.current
+    if (!picking || !main) return
+    let timer = 0
+    let start: { x: number; y: number; at: PickedPeriods } | null = null
+    const down = (e: TouchEvent) => {
+      const t = e.touches[0]
+      const at = e.touches.length === 1 ? periodsAt(t.clientX, t.clientY) : null
+      if (!at) return
+      start = { x: t.clientX, y: t.clientY, at }
+      timer = window.setTimeout(() => {
+        held.current = true
+        anchor.current = at
+        setDraft(at)
+        navigator.vibrate?.(10)
+      }, 350)
+    }
+    const move = (e: TouchEvent) => {
+      if (!start) return
+      const t = e.touches[0]
+      if (held.current) {
+        e.preventDefault()
+        stretch(t.clientX, t.clientY)
+      } else if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > 8) {
+        // Scrolling or swiping, not picking.
+        window.clearTimeout(timer)
+        start = null
+      }
+    }
+    const up = (e: TouchEvent) => {
+      window.clearTimeout(timer)
+      if (start && !held.current && e.type === 'touchend') {
+        const at = start.at
+        setDraft((d) => (!d || d.date !== at.date || (at.from >= d.from && at.to <= d.to) ? at : { date: at.date, from: Math.min(d.from, at.from), to: Math.max(d.to, at.to) }))
+      }
+      start = null
+      anchor.current = null
+      // After the swipe handler has seen it.
+      window.setTimeout(() => (held.current = false))
+    }
+    const menu = (e: Event) => e.preventDefault()
+    main.addEventListener('touchstart', down, { passive: true })
+    main.addEventListener('touchmove', move, { passive: false })
+    main.addEventListener('touchend', up)
+    main.addEventListener('touchcancel', up)
+    main.addEventListener('contextmenu', menu)
+    return () => {
+      window.clearTimeout(timer)
+      main.removeEventListener('touchstart', down)
+      main.removeEventListener('touchmove', move)
+      main.removeEventListener('touchend', up)
+      main.removeEventListener('touchcancel', up)
+      main.removeEventListener('contextmenu', menu)
+    }
+  }, [picking]) // eslint-disable-line react-hooks/exhaustive-deps
   const onPickDown = (e: React.PointerEvent) => {
-    const at = picking && periodsAt(e.clientX, e.clientY)
+    const at = picking && e.pointerType !== 'touch' && periodsAt(e.clientX, e.clientY)
     if (!at) return
     e.preventDefault()
-    // Touch captures the pointer to where it went down; let the moves go to whatever is under the finger.
-    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
     anchor.current = at
     setDraft(at)
   }
   const onPickMove = (e: React.PointerEvent) => {
-    const a = anchor.current
-    const at = a && periodsAt(e.clientX, e.clientY)
-    if (!a || !at || at.date !== a.date) return
-    setDraft({ date: a.date, from: Math.min(a.from, at.from), to: Math.max(a.to, at.to) })
+    if (e.pointerType !== 'touch') stretch(e.clientX, e.clientY)
   }
   /** What makes a cell of the schedule pickable while picking, and shows it when it is picked. */
   const pickable = (date: string, from: number, to: number) =>
@@ -217,7 +274,7 @@ export function Schedule() {
           'data-pick-day': date,
           'data-pick-from': from,
           'data-pick-to': to,
-          className: cn('relative cursor-pointer touch-none select-none [&_*]:pointer-events-none', draft && draft.date === date && from <= draft.to && to >= draft.from && 'after:absolute after:inset-0 after:rounded-xl after:bg-cantaloupe/25 after:ring-2 after:ring-cantaloupe md:after:bottom-3'),
+          className: cn('relative cursor-pointer select-none [-webkit-touch-callout:none] [&_*]:pointer-events-none', draft && draft.date === date && from <= draft.to && to >= draft.from && 'after:absolute after:inset-0 after:rounded-xl after:bg-cantaloupe/25 after:ring-2 after:ring-cantaloupe md:after:bottom-3'),
         }
       : { className: '' }
   const weekRooms = useMemo(() => [...new Set(lessons.flatMap((l) => l.locations))].sort((a, b) => a.localeCompare(b, locale, { numeric: true })), [lessons, locale])
@@ -323,7 +380,7 @@ export function Schedule() {
         </div>
       </header>
 
-      <main className={cn('grid gap-3 px-3 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6', picking && 'pb-28')} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onPointerDown={onPickDown} onPointerMove={onPickMove}>
+      <main ref={mainRef} className={cn('grid gap-3 px-3 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6', picking && 'pb-28')} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onPointerDown={onPickDown} onPointerMove={onPickMove}>
         {account.canViewOthers && <PeopleSearch accountId={account.id} onPick={setPerson} />}
         {!account.canViewOthers && account.role === 'employee' && <CodeLookup onPick={setPerson} />}
 
