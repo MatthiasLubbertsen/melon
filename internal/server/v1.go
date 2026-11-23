@@ -267,7 +267,7 @@ func (s *Server) handleDeleteDetention(w http.ResponseWriter, r *http.Request, p
 
 func (s *Server) handleCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSuffix(r.PathValue("token"), ".ics")
-	ics, err := s.Core.CalendarFeed(r.Context(), token, lang(r))
+	ics, err := s.Core.CalendarFeed(r.Context(), token, lang(r), s.baseURL(r))
 	if err != nil {
 		writeErr(w, err)
 		return

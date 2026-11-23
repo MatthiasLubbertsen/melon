@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -42,7 +44,9 @@ func (s *Service) DisableCalendar(ctx context.Context, p Principal, accountID st
 
 // CalendarFeed renders the iCalendar feed behind a feed secret: last week
 // through the next five. Calendar apps poll rarely, so it may be cached longer.
-func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string, error) {
+// It is built anew on every request; only the Zermelo data under it is cached.
+// base is Melon's own origin, for the link that opens each lesson in the app.
+func (s *Service) CalendarFeed(ctx context.Context, token, lang, base string) (string, error) {
 	a, err := s.Store.AccountByCalendar(ctx, secret.Hash(token))
 	if errors.Is(err, store.ErrNotFound) {
 		return "", ErrNotFound
@@ -113,9 +117,35 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 		if l.Period != nil {
 			desc = append(desc, fmt.Sprintf(word("%de uur", "Period %d"), l.Period.From))
 		}
+		if l.WeekPlan != "" {
+			desc = append(desc, word("Weekplanning: ", "Week plan: ")+l.WeekPlan)
+		}
+		for _, h := range l.Homework {
+			head := word("Huiswerk:", "Homework:")
+			if h.Done {
+				head = word("✓ Huiswerk (af):", "✓ Homework (done):")
+			}
+			desc = append(desc, "", head, plainText(h.Text))
+		}
+		// A link straight to this lesson in Melon. Calendar apps make bare
+		// URLs in the description clickable; URL is there for the ones that
+		// show it as a field (Apple Calendar).
+		open := lessonLink(base, a.ID, l)
+		desc = append(desc, "", word("Openen in Melon: ", "Open in Melon: ")+open)
+
+		// Homework and week plans change without Zermelo knowing, so the
+		// newest of all three is what tells calendar apps to update the event.
 		modified := sched.FetchedAt
 		if l.UpdatedAt != nil {
 			modified = *l.UpdatedAt
+		}
+		if l.weekPlanUpdated != nil && l.weekPlanUpdated.After(modified) {
+			modified = *l.weekPlanUpdated
+		}
+		for _, h := range l.Homework {
+			if h.UpdatedAt.After(modified) {
+				modified = h.UpdatedAt
+			}
 		}
 		line("BEGIN:VEVENT")
 		line("UID:%s-%s@melon", a.ID, l.ID)
@@ -124,6 +154,7 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 		line("DTSTART:%s", l.Start.UTC().Format(stamp))
 		line("DTEND:%s", l.End.UTC().Format(stamp))
 		line("SUMMARY:%s", icsText(summary))
+		line("URL:%s", open)
 		if len(l.Locations) > 0 {
 			line("LOCATION:%s", icsText(strings.Join(l.Locations, ", ")))
 		}
@@ -135,6 +166,51 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 	}
 	line("END:VCALENDAR")
 	return b.String(), nil
+}
+
+// lessonLink opens a lesson in the web app: the account, its day, and the
+// lesson by instance, so the link still works after Zermelo moves it.
+func lessonLink(base, accountID string, l Lesson) string {
+	q := url.Values{"account": {accountID}, "day": {l.Date}, "lesson": {l.Instance}}
+	return strings.TrimSuffix(base, "/") + "/?" + q.Encode()
+}
+
+var (
+	mdTask   = regexp.MustCompile(`^(\s*)(?:[-*]|\d+\.)\s+\[([ xX])\]\s+`)
+	mdBullet = regexp.MustCompile(`^(\s*)[-*]\s+`)
+	mdLink   = regexp.MustCompile(`\[([^\]]+)\]\((\S+?)\)`)
+	mdMarks  = strings.NewReplacer("**", "", "~~", "", "`", "")
+	mdItalic = regexp.MustCompile(`\*([^*\s][^*]*?)\*`)
+)
+
+// plainText turns homework Markdown into text a calendar app shows well:
+// checklists as ☐ and ☑, bullets as •, links as "text (url)" so the URL
+// stays clickable, and no ** or # left over. Calendar descriptions are plain
+// text (RFC 5545); Google Calendar ignores the HTML alternative, X-ALT-DESC.
+func plainText(md string) string {
+	lines := strings.Split(strings.ReplaceAll(md, "\r\n", "\n"), "\n")
+	for i, l := range lines {
+		if m := mdTask.FindStringSubmatch(l); m != nil {
+			box := "☐ "
+			if m[2] != " " {
+				box = "☑ "
+			}
+			l = m[1] + box + l[len(m[0]):]
+		} else if m := mdBullet.FindStringSubmatch(l); m != nil {
+			l = m[1] + "• " + l[len(m[0]):]
+		}
+		l = strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(l, "### "), "## "), "# "), "> ")
+		l = mdLink.ReplaceAllStringFunc(l, func(s string) string {
+			m := mdLink.FindStringSubmatch(s)
+			if m[1] == m[2] {
+				return m[2]
+			}
+			return m[1] + " (" + m[2] + ")"
+		})
+		l = mdItalic.ReplaceAllString(mdMarks.Replace(l), "$1")
+		lines[i] = l
+	}
+	return strings.Join(lines, "\n")
 }
 
 func icsText(s string) string {

@@ -81,6 +81,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/accounts/{account}/detentions", s.authed(s.handleDetentions))
 	mux.HandleFunc("POST /api/v1/accounts/{account}/detentions", s.authed(s.handleAddDetention))
 	mux.HandleFunc("DELETE /api/v1/accounts/{account}/detentions/{id}", s.authed(s.handleDeleteDetention))
+	mux.HandleFunc("GET /api/v1/accounts/{account}/homework", s.authed(s.handleHomeworkList))
+	mux.HandleFunc("POST /api/v1/accounts/{account}/homework", s.authed(s.handleAddHomework))
+	mux.HandleFunc("PATCH /api/v1/accounts/{account}/homework/{id}", s.authed(s.handleUpdateHomework))
+	mux.HandleFunc("DELETE /api/v1/accounts/{account}/homework/{id}", s.authed(s.handleDeleteHomework))
+	mux.HandleFunc("PUT /api/v1/accounts/{account}/plans/{subject}/{week}", s.authed(s.handleSetWeekPlan))
+	mux.HandleFunc("DELETE /api/v1/accounts/{account}/plans/{subject}/{week}", s.authed(s.handleDeleteWeekPlan))
 	mux.HandleFunc("GET /api/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
 		w.Write(s.OpenAPI)
@@ -148,7 +154,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			h.Set("Access-Control-Allow-Origin", "*")
 			h.Set("Access-Control-Expose-Headers", "WWW-Authenticate, Retry-After, Mcp-Session-Id")
 			if r.Method == http.MethodOptions {
-				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Mcp-Protocol-Version, Mcp-Session-Id")
 				h.Set("Access-Control-Max-Age", "600")
 				w.WriteHeader(http.StatusNoContent)

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowDown, CalendarCheck, ChevronLeft, ChevronRight, CloudOff, Megaphone, Plus, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -8,6 +8,7 @@ import { AccountMenu } from '@/components/AccountMenu'
 import { Banner } from '@/components/bits'
 import { CodeLookup } from '@/components/CodeLookup'
 import { DetentionDialog } from '@/components/DetentionForm'
+import { HomeworkMenu } from '@/components/Homework'
 import { LessonCard, LessonDrawer, LessonGroup, SplitCard } from '@/components/Lesson'
 import { isDetention, layoutWeek, lineOf, spanOf } from '@/lib/layoutWeek'
 import { LinkDialog } from '@/components/LinkForm'
@@ -39,8 +40,20 @@ function readDay(): string {
   return defaultDay()
 }
 
-function useRememberedDay() {
-  const [day, setDay] = useState(readDay)
+/**
+ * A link that opens one lesson (the calendar feed has one on every event):
+ * /?account=acc_…&day=2026-11-25&lesson=<instance>. Only for the account it
+ * names, which Home switches to first.
+ */
+function readLessonLink(accountId: string): { day: string; lesson: string } | null {
+  const q = new URLSearchParams(window.location.search)
+  const day = q.get('day') ?? ''
+  if (q.get('account') !== accountId || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null
+  return { day, lesson: q.get('lesson') ?? '' }
+}
+
+function useRememberedDay(initial?: string) {
+  const [day, setDay] = useState(() => initial ?? readDay())
   useEffect(() => {
     try {
       sessionStorage.setItem(DAY_KEY, JSON.stringify({ day, on: today() }))
@@ -57,7 +70,9 @@ export function Schedule() {
   const account = active!
   const qc = useQueryClient()
 
-  const [day, setDay] = useRememberedDay()
+  const [link, setLink] = useState(() => readLessonLink(account.id))
+  const navigate = useNavigate()
+  const [day, setDay] = useRememberedDay(link?.day)
   const [person, setPerson] = useState<Person | null>(null)
   const [openLesson, setOpenLesson] = useState<Lesson | null>(null)
   const [relinking, setRelinking] = useState(false)
@@ -114,6 +129,15 @@ export function Schedule() {
   const days = useMemo(() => [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(mon, i)).filter((d, i) => i < 5 || byDay.has(d) || d === day), [mon, byDay, day])
   const loadedWeek = query.data ? isoWeek(query.data.data.from) === week : false
   const loading = query.isPending || (query.isPlaceholderData && !loadedWeek)
+
+  // Open the lesson a link points at once its week is in, then tidy the URL.
+  useEffect(() => {
+    if (!link || !loadedWeek || query.isFetching) return
+    const l = lessons.find((x) => x.instance === link.lesson || x.id === link.lesson)
+    if (l) setOpenLesson(l)
+    setLink(null)
+    navigate('/', { replace: true })
+  }, [link, loadedWeek, query.isFetching, lessons, navigate])
 
   const dayLessons = byDay.get(day) ?? []
   const dayChanges = dayLessons.filter((l) => l.status !== 'scheduled')
@@ -177,6 +201,7 @@ export function Schedule() {
             <RefreshCw className={cn('size-3.5', busy && 'animate-spin')} />
           </button>
           <span className="flex-1" />
+          {!person && <HomeworkMenu accountId={account.id} onPick={setDay} />}
           <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t('settings')} render={<Link to="/settings" />}>
             <Settings className="size-5" />
           </Button>
@@ -393,7 +418,8 @@ export function Schedule() {
         </div>
       </main>
 
-      <LessonDrawer lesson={openLesson} accountId={account.id} onClose={() => setOpenLesson(null)} />
+      {/* The open lesson follows the schedule, so homework added in the drawer shows up in it. */}
+      <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} onClose={() => setOpenLesson(null)} />
       <DetentionDialog open={adding} onOpenChange={setAdding} accountId={account.id} day={day} times={layout.times} subjects={weekSubjects} rooms={weekRooms} onAdded={setDay} />
       <LinkDialog open={relinking} onOpenChange={setRelinking} initialSchool={account.school} />
     </div>

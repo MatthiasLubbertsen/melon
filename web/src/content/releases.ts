@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, CalendarX, Coffee, Hourglass, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, Hourglass, Info, Layers, MessageSquareHeart, NotebookPen, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -22,6 +22,13 @@ export const releases: Release[] = [
     icon: Hourglass,
     nl: 'Moet je nakomen? Zet het in je rooster met de plusknop.',
     en: 'Got detention? Add it to your schedule with the plus button.',
+  },
+  {
+    id: 'homework',
+    date: '2026-11-23',
+    icon: NotebookPen,
+    nl: 'Zet huiswerk en je weekplanning bij je lessen. Verschuift of vervalt een les, dan gaat huiswerk mee.',
+    en: 'Add homework and week plans to your lessons. If a lesson moves or drops out, homework comes along.',
   },
   {
     id: 'keep-day',

@@ -56,6 +56,80 @@ async function main() {
     await page.keyboard.press('Escape')
     await page.locator('[data-slot="drawer-popup"]').waitFor({ state: 'detached' })
 
+    // Homework on a lesson that drops out: written with the editor's buttons,
+    // shown on the lesson, and listed in the homework menu to move along.
+    for (const d of await page.locator('nav [data-day]').all()) {
+      await d.click()
+      if (await page.locator('[data-status="cancelled"]:visible').count()) break
+    }
+    await page.locator('[data-status="cancelled"]:visible').first().click()
+    const drawer = page.locator('[data-slot="drawer-popup"]')
+    await drawer.waitFor()
+    await drawer.getByRole('button', { name: 'Huiswerk toevoegen' }).click()
+    const box = drawer.getByRole('textbox', { name: 'Huiswerk toevoegen' })
+    await box.fill('Maak opgaven 12 t/m 18\nLeer de woordjes van hoofdstuk 4')
+    await box.press('ControlOrMeta+a')
+    await drawer.getByRole('button', { name: 'Takenlijst' }).click()
+    await box.press('ControlOrMeta+End')
+    await box.press('Enter')
+    await box.press('Enter')
+    await box.pressSequentially('Inleveren via ')
+    await drawer.getByRole('button', { name: 'Link' }).click()
+    await box.pressSequentially('de ELO')
+    await box.press('End')
+    await box.press('ArrowLeft')
+    await box.pressSequentially('elo.example.nl')
+    await shot(`23-homework-editor-${theme}`)
+    await drawer.locator('section[aria-labelledby="homework-title"]').getByRole('button', { name: 'Opslaan' }).click()
+    await drawer.locator('li[data-task] [role="checkbox"]').first().click()
+    await drawer.locator('li[data-task="done"]').waitFor()
+    await shot(`24-homework-lesson-${theme}`)
+    await page.keyboard.press('Escape')
+    await drawer.waitFor({ state: 'detached' })
+    await page.getByRole('button', { name: /huiswerk zonder les/ }).click()
+    await page.getByRole('heading', { name: 'Zonder les' }).waitFor()
+    await shot(`25-homework-menu-${theme}`)
+    await page.getByRole('button', { name: 'Naar volgende les' }).click()
+    await page.getByRole('heading', { name: 'Komt nog' }).waitFor()
+    await page.getByRole('heading', { name: 'Zonder les' }).waitFor({ state: 'detached' })
+    await shot(`26-homework-moved-${theme}`)
+    await page.locator('[data-slot="drawer-popup"]').locator('li button').first().click()
+    await page.locator('[data-slot="drawer-popup"]').waitFor({ state: 'detached' })
+    await page.getByText('Huiswerk', { exact: true }).locator('visible=true').first().waitFor()
+    await shot(`27-homework-on-lesson-${theme}`)
+
+    // A week plan link for the subject, shown on each of its lessons that week.
+    await page.locator('[data-status]:visible', { hasText: 'Huiswerk' }).first().click()
+    await drawer.waitFor()
+    await drawer.getByRole('button', { name: 'Weekplanning toevoegen' }).click()
+    await drawer.getByRole('textbox', { name: /Weekplanning/ }).fill('https://jfc.itslearning.com/plans/courses/32813/plan/413396')
+    await drawer.locator('form').filter({ has: page.locator('#week-plan') }).getByRole('button', { name: 'Opslaan' }).click()
+    await drawer.getByRole('link', { name: /Weekplanning week/ }).waitFor()
+    await shot(`28-week-plan-${theme}`)
+    await page.keyboard.press('Escape')
+    await drawer.waitFor({ state: 'detached' })
+
+    // The calendar feed links every lesson to Melon: that link opens it, even in another week.
+    const target = await page.evaluate(async () => {
+      const session = (await (await fetch('/api/app/session')).json()).data
+      const account = session.accounts.find((a) => a.role === 'student').id
+      const next = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+      const sched = (await (await fetch(`/api/v1/accounts/${account}/schedule?from=${next}&to=${next}`)).json()).data
+      const l = sched.lessons.find((x) => x.status !== 'cancelled') ?? sched.lessons[0]
+      return l && { account, day: l.date, lesson: l.instance, title: l.title }
+    })
+    if (target) {
+      await page.goto(`${BASE}/?account=${target.account}&day=${target.day}&lesson=${target.lesson}`)
+      await drawer.waitFor()
+      await drawer.getByRole('heading', { name: target.title }).waitFor()
+      await page.waitForURL(`${BASE}/`)
+      await shot(`29-lesson-link-${theme}`)
+      await page.keyboard.press('Escape')
+      await drawer.waitFor({ state: 'detached' })
+    }
+    await page.keyboard.press('Escape')
+    await page.locator('[data-slot="drawer-popup"]').waitFor({ state: 'detached' })
+
     await page.getByRole('button', { name: 'Wissel van account' }).click()
     await page.getByRole('menuitem', { name: /Noor Bakker/ }).waitFor()
     await shot(`04-accounts-${theme}`)

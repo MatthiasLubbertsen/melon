@@ -20,8 +20,30 @@ export type Account = {
 
 export type Person = { code: string; name: string; type: 'student' | 'employee' }
 
+export type Homework = {
+  id: string
+  /** Markdown. */
+  text: string
+  done: boolean
+  createdAt: string
+  updatedAt: string
+  /** The lesson as Melon last saw it; only in the homework list. */
+  lesson?: {
+    instance: string
+    date: string
+    start: string
+    end: string
+    title: string
+    subjects: string[]
+    /** 'gone' when the lesson disappeared from the schedule. */
+    status: 'scheduled' | 'changed' | 'cancelled' | 'gone'
+  }
+}
+
 export type Lesson = {
   id: string
+  /** Stays the same when Zermelo moves the lesson; homework hangs on it. */
+  instance: string
   date: string
   start: string
   end: string
@@ -43,6 +65,10 @@ export type Lesson = {
   online: boolean
   onlineUrl?: string
   optional: boolean
+  /** Only on the account's own schedule. */
+  homework: Homework[]
+  /** The link saved for this subject this week (an itslearning plan, say), or ''. */
+  weekPlan: string
 }
 
 export type Schedule = {
@@ -222,6 +248,17 @@ export const api = {
 
   addDetention: (account: string, body: DetentionInput) => data(request<Detention>('POST', `/api/v1/accounts/${account}/detentions`, body)),
   deleteDetention: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/detentions/${encodeURIComponent(id)}`)),
+  homework: {
+    list: (account: string) => data(request<Homework[]>('GET', `/api/v1/accounts/${account}/homework`)),
+    add: (account: string, lesson: Lesson, text: string) => data(request<Homework>('POST', `/api/v1/accounts/${account}/homework`, { lesson: lesson.id, date: lesson.date, text })),
+    update: (account: string, id: string, change: { text?: string; done?: boolean; moveTo?: string; date?: string }) =>
+      data(request<Homework>('PATCH', `/api/v1/accounts/${account}/homework/${id}`, change)),
+    remove: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/homework/${id}`)),
+  },
+
+  setWeekPlan: (account: string, subject: string, week: string, url: string) =>
+    data(request<{ subject: string; week: string; url: string }>('PUT', `/api/v1/accounts/${account}/plans/${encodeURIComponent(subject)}/${week}`, { url })),
+  deleteWeekPlan: (account: string, subject: string, week: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/plans/${encodeURIComponent(subject)}/${week}`)),
 
   calendar: (account: string) => data(request<Calendar>('GET', `/api/app/accounts/${account}/calendar`)),
   enableCalendar: (account: string) => data(request<Calendar>('POST', `/api/app/accounts/${account}/calendar`, {})),
