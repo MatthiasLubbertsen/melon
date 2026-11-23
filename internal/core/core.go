@@ -134,7 +134,10 @@ type Period struct {
 }
 
 type Lesson struct {
-	ID         string    `json:"id"`
+	ID string `json:"id"`
+	// Instance stays the same when Zermelo moves or changes the lesson, while
+	// ID does not. Homework hangs on it.
+	Instance   string    `json:"instance"`
 	Date       string    `json:"date"`
 	Start      time.Time `json:"start"`
 	End        time.Time `json:"end"`
@@ -159,6 +162,14 @@ type Lesson struct {
 	OnlineURL  string     `json:"onlineUrl,omitempty"`
 	Optional   bool       `json:"optional"`
 	UpdatedAt  *time.Time `json:"updatedAt"`
+	// Homework is what the account wrote on this lesson. Always empty when
+	// looking at someone else's schedule.
+	Homework []Homework `json:"homework"`
+	// WeekPlan is the link the account saved for this lesson's subject in
+	// this week (an itslearning plan, say). Empty when there is none.
+	WeekPlan string `json:"weekPlan"`
+	// weekPlanUpdated is when WeekPlan was saved, for the calendar feed.
+	weekPlanUpdated *time.Time
 }
 
 type Schedule struct {
@@ -782,6 +793,14 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 		// Within one slot, show what is happening before what was cancelled.
 		return a.Status != "cancelled" && b.Status == "cancelled"
 	})
+	if q.Person == "" || q.Person == a.ZermeloUser {
+		if err := s.attachHomework(ctx, a.ID, &out, q.From, end); err != nil {
+			return Schedule{}, err
+		}
+		if err := s.attachWeekPlans(ctx, a.ID, &out); err != nil {
+			return Schedule{}, err
+		}
+	}
 	s.Usage.Record(time.Now().In(s.Loc), p.Kind, len(out.Lessons))
 	return out, nil
 }
@@ -790,6 +809,8 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 	start := time.Unix(ap.Start, 0).In(loc)
 	l := Lesson{
 		ID:         fmt.Sprint(ap.ID),
+		Instance:   fmt.Sprint(ap.ID),
+		Homework:   []Homework{},
 		Date:       start.Format(time.DateOnly),
 		Start:      start,
 		End:        time.Unix(ap.End, 0).In(loc),
@@ -805,6 +826,9 @@ func toLesson(ap zermelo.Appointment, loc *time.Location, lang string, overrides
 		Online:     ap.Online,
 		OnlineURL:  ap.OnlineLocationURL,
 		Optional:   ap.Optional,
+	}
+	if ap.Instance > 0 {
+		l.Instance = fmt.Sprint(ap.Instance)
 	}
 	if l.Type == "" {
 		l.Type = "lesson"

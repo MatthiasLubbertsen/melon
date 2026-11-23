@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, MapPin, User, Users, Video } from 'lucide-react'
+import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, MapPin, NotebookPen, User, Users, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Chip } from '@/components/bits'
+import { LessonHomework } from '@/components/Homework'
+import { WeekPlan } from '@/components/WeekPlan'
 import { api, type Lesson } from '@/lib/api'
 import { formatDay, formatTime } from '@/lib/dates'
 import { hyphenate } from '@/lib/hyphenate'
@@ -29,9 +31,11 @@ function onlySaysCancelled(note: string): boolean {
 }
 
 /** Status chips: what changed is spelled out, never just a colour. */
-function Chips({ lesson, isNow }: { lesson: Lesson; isNow?: boolean }) {
-  const { t } = useI18n()
+function Chips({ lesson, isNow, homework }: { lesson: Lesson; isNow?: boolean; homework?: boolean }) {
+  const { t, plural } = useI18n()
   const label = typeLabel(lesson.type)
+  const hw = homework ? lesson.homework : []
+  const hwDone = hw.length > 0 && hw.every((h) => h.done)
   return (
     <>
       {isNow && <Chip tone="honeydew">{t('now')}</Chip>}
@@ -62,6 +66,12 @@ function Chips({ lesson, isNow }: { lesson: Lesson; isNow?: boolean }) {
         <Chip tone="honeydew">
           <Video />
           {t('online')}
+        </Chip>
+      )}
+      {hw.length > 0 && (
+        <Chip tone={lesson.status === 'cancelled' && !hwDone ? 'watermelon' : 'honeydew'} className={cn(hwDone && 'bg-muted text-muted-foreground')}>
+          <NotebookPen />
+          {hwDone ? t('homeworkDone') : plural('homeworkCount', hw.length)}
         </Chip>
       )}
     </>
@@ -104,9 +114,9 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
           {hyphenate(lesson.title, lang)}
         </span>
         {where && <span className={cn('truncate text-sm text-muted-foreground', cancelled && 'line-through')}>{where}</span>}
-        {(lesson.status !== 'scheduled' || lesson.type !== 'lesson' || lesson.online || isNow) && (
+        {(lesson.status !== 'scheduled' || lesson.type !== 'lesson' || lesson.online || isNow || lesson.homework.length > 0) && (
           <span className="mt-0.5 flex min-w-0 flex-wrap gap-1.5">
-            <Chips lesson={lesson} isNow={isNow && !cancelled} />
+            <Chips lesson={lesson} isNow={isNow && !cancelled} homework />
           </span>
         )}
         {lesson.changeRest && !cancelled && <span className="text-sm text-cantaloupe-ink">{lesson.changeRest}</span>}
@@ -234,7 +244,7 @@ function NameEdit({ accountId, kind, code, name }: { accountId: string; kind: 's
   )
 }
 
-export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | null; accountId: string; onClose: () => void }) {
+export function LessonDrawer({ lesson, accountId, onClose, own }: { lesson: Lesson | null; accountId: string; onClose: () => void; /** The account's own schedule, where homework can go. */ own: boolean }) {
   const { t, locale } = useI18n()
   // Keep the last lesson around so the sheet can animate out with content.
   const [shown, setShown] = useState(lesson)
@@ -275,6 +285,8 @@ export function LessonDrawer({ lesson, accountId, onClose }: { lesson: Lesson | 
                 {t('online')}
               </Button>
             )}
+            {own && l.subjects.length > 0 && <WeekPlan key={`plan-${l.id}`} lesson={l} accountId={accountId} />}
+            {own && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}
             {l.subjects.length + l.teachers.length > 0 && (
               <div className="mt-4 grid gap-4 border-t pt-4">
                 {l.subjects.map((s) => (

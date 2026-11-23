@@ -50,6 +50,8 @@ tags:
     description: Readable names for Zermelo's subject codes.
   - name: Teachers
     description: Names for Zermelo's teacher codes.
+  - name: Homework
+    description: Homework written on lessons, kept in Melon, which follows a lesson when Zermelo moves it, and week plan links per subject.
 paths:
   /accounts:
     get:
@@ -399,6 +401,168 @@ paths:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/homework:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Homework]
+      operationId: listHomework
+      summary: List homework
+      description: |
+        Every piece of homework on this account, by lesson time, with the lesson
+        it is on as Melon last saw it. A lesson `status` of `cancelled` or `gone`
+        means the lesson dropped out; move the homework with *Update homework*.
+        Homework also comes along on each lesson of the account's own schedule.
+      responses:
+        "200":
+          description: The homework.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Homework" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Homework]
+      operationId: addHomework
+      summary: Add homework
+      description: |
+        Writes homework on one of the account's own lessons. It hangs on the
+        lesson's `instance`, so it stays with the lesson when Zermelo moves it.
+        Only stored in Melon; nothing is written to Zermelo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lesson, date, text]
+              properties:
+                lesson: { type: string, description: The lesson's `id` or `instance`. }
+                date: { type: string, format: date, description: The lesson's date. }
+                text: { type: string, minLength: 1, maxLength: 5000, description: Markdown., examples: ["- [ ] Maak opgaven 12 t/m 18"] }
+      responses:
+        "201":
+          description: The new homework.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Homework" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/homework/{id}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, examples: ["hw_vakhve3jtxkv"] }
+    patch:
+      tags: [Homework]
+      operationId: updateHomework
+      summary: Update homework
+      description: Changes the text, ticks it off, or moves it to another lesson. Leave out what stays the same.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text: { type: string, minLength: 1, maxLength: 5000, description: Markdown. }
+                done: { type: boolean }
+                moveTo:
+                  type: string
+                  description: "`next` for the next lesson of the same subject that still takes place (within four weeks), or a lesson's `id` or `instance` together with `date`."
+                date: { type: string, format: date, description: "The date of the lesson in `moveTo`." }
+      responses:
+        "200":
+          description: The homework as it is now.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Homework" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Homework]
+      operationId: deleteHomework
+      summary: Delete homework
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/plans/{subject}/{week}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: subject
+        in: path
+        required: true
+        description: Zermelo subject code, e.g. `du`. Case-insensitive.
+        schema: { type: string, maxLength: 32 }
+      - name: week
+        in: path
+        required: true
+        description: ISO week, e.g. `2026-W48`.
+        schema: { type: string, pattern: "^\\d{4}-W\\d{2}$" }
+    put:
+      tags: [Homework]
+      operationId: setWeekPlan
+      summary: Set a week plan link
+      description: |
+        Saves a link (an itslearning plan, say) for one subject in one week. It
+        comes along as `weekPlan` on every lesson of that subject that week in
+        the account's own schedule. An empty `url` removes it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri, maxLength: 1000, examples: ["https://jfc.itslearning.com/plans/courses/32813/plan/413396"] }
+      responses:
+        "200":
+          description: The saved link.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [subject, week, url]
+                    properties:
+                      subject: { type: string }
+                      week: { type: string }
+                      url: { type: string }
+        "204": { description: Removed (empty url). }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Homework]
+      operationId: deleteWeekPlan
+      summary: Remove a week plan link
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     apiKey:
@@ -493,9 +657,10 @@ components:
             cancelled: { type: integer }
     Lesson:
       type: object
-      required: [id, date, start, end, period, type, title, subjects, teachers, locations, groups, status, changes, changeNote, previous, changeRest, note, online, optional, updatedAt]
+      required: [id, instance, date, start, end, period, type, title, subjects, teachers, locations, groups, status, changes, changeNote, previous, changeRest, note, online, optional, updatedAt, homework, weekPlan]
       properties:
         id: { type: string }
+        instance: { type: string, description: "Stays the same when Zermelo moves or changes the lesson, while `id` does not." }
         date: { type: string, format: date, description: The school day this lesson is on. }
         start: { type: string, format: date-time }
         end: { type: string, format: date-time }
@@ -543,6 +708,32 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the school last modified this lesson.
+        homework:
+          type: array
+          description: Homework the account wrote on this lesson. Always empty on someone else's schedule.
+          items: { $ref: "#/components/schemas/Homework" }
+        weekPlan: { type: string, description: "The link saved for this subject this week (see *Set a week plan link*), or empty. Always empty on someone else's schedule." }
+    Homework:
+      type: object
+      required: [id, text, done, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        text: { type: string, description: Markdown. }
+        done: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lesson:
+          type: object
+          description: The lesson as Melon last saw it. Only in *List homework* and the replies of the calls that change homework.
+          required: [instance, date, start, end, title, subjects, status]
+          properties:
+            instance: { type: string }
+            date: { type: string, format: date }
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+            title: { type: string }
+            subjects: { type: array, items: { type: string }, description: Subject codes. }
+            status: { type: string, enum: [scheduled, changed, cancelled, gone], description: "`gone`: no longer in the schedule." }
     Announcement:
       type: object
       required: [id, title, text, start, end]

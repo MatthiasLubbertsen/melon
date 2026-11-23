@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, CalendarX, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, Info, Layers, MessageSquareHeart, NotebookPen, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'homework',
+    date: '2026-11-23',
+    icon: NotebookPen,
+    nl: 'Zet huiswerk en je weekplanning bij je lessen. Verschuift of vervalt een les, dan gaat huiswerk mee.',
+    en: 'Add homework and week plans to your lessons. If a lesson moves or drops out, homework comes along.',
+  },
   {
     id: 'keep-day',
     date: '2026-11-19',
