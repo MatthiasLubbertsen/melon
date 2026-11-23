@@ -20,7 +20,7 @@ export const releases: Release[] = [
     id: 'detentions',
     date: '2026-11-23',
     icon: Hourglass,
-    nl: 'Moet je nablijven? Zet een strafuur in je rooster met de plusknop.',
+    nl: 'Moet je nakomen? Zet het in je rooster met de plusknop.',
     en: 'Got detention? Add it to your schedule with the plus button.',
   },
   {

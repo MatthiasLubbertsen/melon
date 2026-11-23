@@ -14,7 +14,7 @@ import (
 )
 
 // Detention is an extra hour at school the account added itself, such as
-// detention ("strafuur"). Zermelo never hears about it; Melon puts it in the
+// detention ("nakomen"). Zermelo never hears about it; Melon puts it in the
 // account's own schedule as a lesson of type "detention".
 type Detention struct {
 	ID     string  `json:"id"`
@@ -152,7 +152,7 @@ func (s *Service) detentionLessons(ctx context.Context, a store.Account, from, t
 		case lang == "en":
 			l.Title = "Detention"
 		default:
-			l.Title = "Strafuur"
+			l.Title = "Nakomen"
 		}
 		out = append(out, l)
 	}

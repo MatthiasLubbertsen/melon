@@ -231,7 +231,7 @@ export function SplitCard({ lesson, detentions, isNow, onOpen }: { lesson: Lesso
                 <span className="truncate text-[0.95rem] leading-snug font-medium">{hyphenate(d.title, lang)}</span>
               </span>
               <span className="truncate text-xs text-cantaloupe-ink">
-                {[t('detention'), d.locations.join(', '), !sameTime && `${formatTime(d.start, locale)} – ${formatTime(d.end, locale)}`].filter(Boolean).join(' · ')}
+                {[d.title !== t('detention') && t('detention'), d.locations.join(', '), !sameTime && `${formatTime(d.start, locale)} – ${formatTime(d.end, locale)}`].filter(Boolean).join(' · ')}
               </span>
             </button>
           )

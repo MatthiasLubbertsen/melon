@@ -147,6 +147,7 @@ export function Schedule() {
     for (const l of lessons) if (!isDetention(l)) for (const s of l.subjects) if (!seen.has(s.code.toLowerCase())) seen.set(s.code.toLowerCase(), s.name)
     return [...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, locale))
   }, [lessons, locale])
+  const weekRooms = useMemo(() => [...new Set(lessons.flatMap((l) => l.locations))].sort((a, b) => a.localeCompare(b, locale, { numeric: true })), [lessons, locale])
   const lessonGroup = (g: Lesson[]) =>
     g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
@@ -393,7 +394,7 @@ export function Schedule() {
       </main>
 
       <LessonDrawer lesson={openLesson} accountId={account.id} onClose={() => setOpenLesson(null)} />
-      <DetentionDialog open={adding} onOpenChange={setAdding} accountId={account.id} day={day} times={layout.times} subjects={weekSubjects} onAdded={setDay} />
+      <DetentionDialog open={adding} onOpenChange={setAdding} accountId={account.id} day={day} times={layout.times} subjects={weekSubjects} rooms={weekRooms} onAdded={setDay} />
       <LinkDialog open={relinking} onOpenChange={setRelinking} initialSchool={account.school} />
     </div>
   )

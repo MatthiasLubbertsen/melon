@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
+import { coveredPeriods } from '@/lib/layoutWeek'
 import { cn } from '@/lib/utils'
 
 const hhmm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
@@ -26,6 +27,7 @@ export function DetentionDialog({
   day,
   times,
   subjects,
+  rooms,
   onAdded,
 }: {
   open: boolean
@@ -36,6 +38,8 @@ export function DetentionDialog({
   times: Map<number, { start: number; end: number }>
   /** Subjects to link to, from the lessons on screen. */
   subjects: { code: string; name: string }[]
+  /** Rooms from the lessons on screen, offered as suggestions. */
+  rooms: string[]
   onAdded: (date: string) => void
 }) {
   const { t } = useI18n()
@@ -105,13 +109,14 @@ export function DetentionDialog({
     return el ? Number(el.dataset.period) : null
   }
 
-  // Typed times keep the periods only while they still match them exactly.
+  // Typed times take the periods they overlap, so the card still says which hour it is.
   const typed = (s: string, e: string) => {
     setStart(s)
     setEnd(e)
-    const from = periods.find((p) => hhmm(slots.get(p)!.start) === s)
-    const to = periods.find((p) => hhmm(slots.get(p)!.end) === e)
-    setRange(from !== undefined && to !== undefined && to >= from ? { from, to } : null)
+    const a = minutes(s)
+    const b = minutes(e)
+    const hit = b > a ? coveredPeriods(slots, a, b) : []
+    setRange(hit.length ? { from: hit[0], to: hit[hit.length - 1] } : null)
   }
 
   const valid = /^\d{4}-\d{2}-\d{2}$/.test(date) && minutes(end) > minutes(start)
@@ -213,6 +218,18 @@ export function DetentionDialog({
           </div>
 
           <div className="grid gap-1.5">
+            <Label htmlFor="detention-location">
+              {t('location')} <span className="font-normal text-muted-foreground">({t('optional').toLowerCase()})</span>
+            </Label>
+            <Input id="detention-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={40} list="detention-rooms" autoComplete="off" placeholder={t('detentionLocationPlaceholder')} className="h-11 text-base" />
+            <datalist id="detention-rooms">
+              {rooms.map((r) => (
+                <option key={r} value={r} />
+              ))}
+            </datalist>
+          </div>
+
+          <div className="grid gap-1.5">
             <span className="text-sm font-medium" id="detention-subject">
               {t('detentionSubject')}
             </span>
@@ -241,12 +258,7 @@ export function DetentionDialog({
             </Label>
             <Input id="detention-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={80} placeholder={t('detentionNotePlaceholder')} className="h-11 text-base" />
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="detention-location">
-              {t('location')} <span className="font-normal text-muted-foreground">({t('optional').toLowerCase()})</span>
-            </Label>
-            <Input id="detention-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={40} placeholder={t('detentionLocationPlaceholder')} className="h-11 text-base" />
-          </div>
+
         </form>
         <DialogFooter>
           <Button type="button" variant="outline" className="h-11" onClick={() => onOpenChange(false)}>

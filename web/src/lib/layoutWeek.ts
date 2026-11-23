@@ -12,6 +12,19 @@ import { groupOverlapping } from '@/lib/groupLessons'
 /** Minutes since midnight in school time; the API sends local times with their offset. */
 export const minuteOfDay = (iso: string) => Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16))
 
+/**
+ * The periods a stretch of time takes: the ones it covers at least half of,
+ * or else the one it overlaps most. Sorted, contiguous by construction of the times.
+ */
+export function coveredPeriods(times: Map<number, { start: number; end: number }>, start: number, end: number): number[] {
+  const overlap = [...times]
+    .map(([p, t]) => ({ p, len: t.end - t.start, o: Math.min(end, t.end) - Math.max(start, t.start) }))
+    .filter((x) => x.o > 0)
+  const most = overlap.filter((x) => x.o * 2 >= x.len)
+  const picked = most.length ? most : overlap.sort((a, b) => b.o - a.o).slice(0, 1)
+  return picked.map((x) => x.p).sort((a, b) => a - b)
+}
+
 /** A detention the account added itself, not something from Zermelo. */
 export const isDetention = (l: Lesson) => l.type === 'detention'
 
@@ -83,8 +96,13 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
     if (l.period) return l.period
     const start = minuteOfDay(l.start)
     const end = minuteOfDay(l.end)
-    const ps = [...times].filter(([, t]) => t.start < end && start < t.end).map(([p]) => p)
-    return ps.length ? { from: Math.min(...ps), to: Math.max(...ps) } : null
+    const ps = coveredPeriods(times, start, end)
+    if (ps.length) return { from: ps[0], to: ps[ps.length - 1] }
+    // After the last period of the day, like most detentions: the next period number.
+    const known = [...times].sort((a, b) => a[0] - b[0])
+    const lastP = known[known.length - 1]
+    if (lastP && start >= lastP[1].end) return { from: lastP[0] + 1, to: lastP[0] + 1 }
+    return null
   }
 
   type Run = { groups: Lesson[][]; detentions: Lesson[]; from: number; to: number }
@@ -115,12 +133,14 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
     }
     // A detention splits every lesson cell it overlaps, and takes the free periods it covers whole.
     const own: Run[] = []
-    for (const l of all.filter(isDetention)) {
-      const p = detentionPeriods(l)
+    for (const found of all.filter(isDetention)) {
+      const p = detentionPeriods(found)
       if (!p) {
-        unplaced.push([l])
+        unplaced.push([found])
         continue
       }
+      // One entered by time shows the period it landed in, like any lesson.
+      const l = found.period ? found : { ...found, period: p }
       for (const r of runs) if (r.from <= p.to && p.from <= r.to) r.detentions.push(l)
       for (let k = p.from; k <= p.to; k++) {
         if (runs.some((r) => r.from <= k && k <= r.to)) continue
