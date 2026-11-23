@@ -165,6 +165,9 @@ type Lesson struct {
 	// Homework is what the account wrote on this lesson. Always empty when
 	// looking at someone else's schedule.
 	Homework []Homework `json:"homework"`
+	// WeekPlan is the link the account saved for this lesson's subject in
+	// this week (an itslearning plan, say). Empty when there is none.
+	WeekPlan string `json:"weekPlan"`
 }
 
 type Schedule struct {
@@ -790,6 +793,9 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 	})
 	if q.Person == "" || q.Person == a.ZermeloUser {
 		if err := s.attachHomework(ctx, a.ID, &out, q.From, end); err != nil {
+			return Schedule{}, err
+		}
+		if err := s.attachWeekPlans(ctx, a.ID, &out); err != nil {
 			return Schedule{}, err
 		}
 	}

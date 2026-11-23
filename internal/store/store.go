@@ -142,7 +142,7 @@ func Open(dataDir string) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(1) // SQLite: one writer; keeps things simple and safe.
-	if _, err := db.Exec(schema + feedbackSchema + homeworkSchema); err != nil {
+	if _, err := db.Exec(schema + feedbackSchema + homeworkSchema + weekPlanSchema); err != nil {
 		return nil, err
 	}
 	for _, c := range columns {

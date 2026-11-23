@@ -20,8 +20,8 @@ export const releases: Release[] = [
     id: 'homework',
     date: '2026-11-23',
     icon: NotebookPen,
-    nl: 'Zet huiswerk bij een les. Verschuift of vervalt die les, dan gaat je huiswerk mee.',
-    en: 'Add homework to a lesson. If the lesson moves or drops out, your homework comes along.',
+    nl: 'Zet huiswerk en je weekplanning bij je lessen. Verschuift of vervalt een les, dan gaat huiswerk mee.',
+    en: 'Add homework and week plans to your lessons. If a lesson moves or drops out, homework comes along.',
   },
   {
     id: 'keep-day',

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/matthiaslubbertsen/melon/internal/core"
 )
@@ -55,6 +56,34 @@ func (s *Server) handleUpdateHomework(w http.ResponseWriter, r *http.Request, p 
 
 func (s *Server) handleDeleteHomework(w http.ResponseWriter, r *http.Request, p core.Principal) {
 	if err := s.Core.DeleteHomework(r.Context(), p, r.PathValue("account"), r.PathValue("id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleSetWeekPlan(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	var body struct {
+		URL string `json:"url"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	u, err := s.Core.SetWeekPlan(r.Context(), p, r.PathValue("account"), r.PathValue("subject"), r.PathValue("week"), body.URL)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if u == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeData(w, map[string]string{"subject": strings.ToLower(r.PathValue("subject")), "week": strings.ToUpper(r.PathValue("week")), "url": u})
+}
+
+func (s *Server) handleDeleteWeekPlan(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	if _, err := s.Core.SetWeekPlan(r.Context(), p, r.PathValue("account"), r.PathValue("subject"), r.PathValue("week"), ""); err != nil {
 		writeErr(w, err)
 		return
 	}

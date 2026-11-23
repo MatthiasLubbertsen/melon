@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Chip } from '@/components/bits'
 import { LessonHomework } from '@/components/Homework'
+import { WeekPlan } from '@/components/WeekPlan'
 import { api, type Lesson } from '@/lib/api'
 import { formatDay, formatTime } from '@/lib/dates'
 import { hyphenate } from '@/lib/hyphenate'
@@ -284,6 +285,7 @@ export function LessonDrawer({ lesson, accountId, onClose, own }: { lesson: Less
                 {t('online')}
               </Button>
             )}
+            {own && l.subjects.length > 0 && <WeekPlan key={`plan-${l.id}`} lesson={l} accountId={accountId} />}
             {own && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}
             {l.subjects.length + l.teachers.length > 0 && (
               <div className="mt-4 grid gap-4 border-t pt-4">

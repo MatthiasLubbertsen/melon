@@ -97,6 +97,17 @@ async function main() {
     await page.locator('[data-slot="drawer-popup"]').waitFor({ state: 'detached' })
     await page.getByText('Huiswerk', { exact: true }).locator('visible=true').first().waitFor()
     await shot(`27-homework-on-lesson-${theme}`)
+
+    // A week plan link for the subject, shown on each of its lessons that week.
+    await page.locator('[data-status]:visible', { hasText: 'Huiswerk' }).first().click()
+    await drawer.waitFor()
+    await drawer.getByRole('button', { name: 'Weekplanning toevoegen' }).click()
+    await drawer.getByRole('textbox', { name: /Weekplanning/ }).fill('https://jfc.itslearning.com/plans/courses/32813/plan/413396')
+    await drawer.locator('form').filter({ has: page.locator('#week-plan') }).getByRole('button', { name: 'Opslaan' }).click()
+    await drawer.getByRole('link', { name: /Weekplanning week/ }).waitFor()
+    await shot(`28-week-plan-${theme}`)
+    await page.keyboard.press('Escape')
+    await drawer.waitFor({ state: 'detached' })
     await page.keyboard.press('Escape')
     await page.locator('[data-slot="drawer-popup"]').waitFor({ state: 'detached' })
 

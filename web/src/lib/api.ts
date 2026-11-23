@@ -67,6 +67,8 @@ export type Lesson = {
   optional: boolean
   /** Only on the account's own schedule. */
   homework: Homework[]
+  /** The link saved for this subject this week (an itslearning plan, say), or ''. */
+  weekPlan: string
 }
 
 export type Schedule = {
@@ -247,6 +249,10 @@ export const api = {
       data(request<Homework>('PATCH', `/api/v1/accounts/${account}/homework/${id}`, change)),
     remove: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/homework/${id}`)),
   },
+
+  setWeekPlan: (account: string, subject: string, week: string, url: string) =>
+    data(request<{ subject: string; week: string; url: string }>('PUT', `/api/v1/accounts/${account}/plans/${encodeURIComponent(subject)}/${week}`, { url })),
+  deleteWeekPlan: (account: string, subject: string, week: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/plans/${encodeURIComponent(subject)}/${week}`)),
 
   calendar: (account: string) => data(request<Calendar>('GET', `/api/app/accounts/${account}/calendar`)),
   enableCalendar: (account: string) => data(request<Calendar>('POST', `/api/app/accounts/${account}/calendar`, {})),
