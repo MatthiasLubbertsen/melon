@@ -12,8 +12,12 @@ import { groupOverlapping } from '@/lib/groupLessons'
 /** Minutes since midnight in school time; the API sends local times with their offset. */
 export const minuteOfDay = (iso: string) => Number(iso.slice(11, 13)) * 60 + Number(iso.slice(14, 16))
 
+/** A detention the account added itself, not something from Zermelo. */
+export const isDetention = (l: Lesson) => l.type === 'detention'
+
 export type Cell =
-  | { kind: 'lessons'; groups: Lesson[][]; from: number; to: number; start: number; end: number }
+  /** groups can be empty when only detentions fill the periods. */
+  | { kind: 'lessons'; groups: Lesson[][]; detentions: Lesson[]; from: number; to: number; start: number; end: number }
   | { kind: 'free'; period: number }
 
 export type DayLayout = {
@@ -48,7 +52,7 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
   const seen = new Map<number, { starts: number[]; ends: number[] }>()
   for (const ls of byDay.values()) {
     for (const l of ls) {
-      if (!l.period) continue
+      if (!l.period || isDetention(l)) continue
       const s = seen.get(l.period.from) ?? { starts: [], ends: [] }
       s.starts.push(minuteOfDay(l.start))
       if (l.period.to === l.period.from) s.ends.push(minuteOfDay(l.end))
@@ -74,14 +78,25 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
     return null
   }
 
+  // A detention entered by time takes every period its time overlaps.
+  const detentionPeriods = (l: Lesson): { from: number; to: number } | null => {
+    if (l.period) return l.period
+    const start = minuteOfDay(l.start)
+    const end = minuteOfDay(l.end)
+    const ps = [...times].filter(([, t]) => t.start < end && start < t.end).map(([p]) => p)
+    return ps.length ? { from: Math.min(...ps), to: Math.max(...ps) } : null
+  }
+
+  type Run = { groups: Lesson[][]; detentions: Lesson[]; from: number; to: number }
   let first = Infinity
   let last = -Infinity
-  const placed = new Map<string, { groups: Lesson[][]; from: number; to: number }[]>()
+  const placed = new Map<string, Run[]>()
   const unplacedByDay = new Map<string, Lesson[][]>()
   for (const d of days) {
-    const runs: { groups: Lesson[][]; from: number; to: number }[] = []
+    const runs: Run[] = []
     const unplaced: Lesson[][] = []
-    for (const g of groupOverlapping(byDay.get(d) ?? [])) {
+    const all = byDay.get(d) ?? []
+    for (const g of groupOverlapping(all.filter((l) => !isDetention(l)))) {
       const ps = g.map(periodOf).filter((p) => p !== null)
       if (ps.length === 0) {
         unplaced.push(g)
@@ -95,10 +110,39 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
         prev.groups.push(g)
         prev.to = Math.max(prev.to, to)
       } else {
-        runs.push({ groups: [g], from, to })
+        runs.push({ groups: [g], detentions: [], from, to })
       }
-      first = Math.min(first, from)
-      last = Math.max(last, to)
+    }
+    // A detention splits every lesson cell it overlaps, and takes the free periods it covers whole.
+    const own: Run[] = []
+    for (const l of all.filter(isDetention)) {
+      const p = detentionPeriods(l)
+      if (!p) {
+        unplaced.push([l])
+        continue
+      }
+      for (const r of runs) if (r.from <= p.to && p.from <= r.to) r.detentions.push(l)
+      for (let k = p.from; k <= p.to; k++) {
+        if (runs.some((r) => r.from <= k && k <= r.to)) continue
+        const prev = own[own.length - 1]
+        if (prev && prev.detentions.includes(l) && prev.to === k - 1) prev.to = k
+        else own.push({ groups: [], detentions: [l], from: k, to: k })
+      }
+    }
+    // Two detentions in the same free periods share a cell.
+    own.sort((x, y) => x.from - y.from)
+    for (const r of own) {
+      const prev = runs.find((x) => x.groups.length === 0 && r.from <= x.to && x.from <= r.to)
+      if (prev) {
+        prev.detentions.push(...r.detentions.filter((x) => !prev.detentions.includes(x)))
+        prev.from = Math.min(prev.from, r.from)
+        prev.to = Math.max(prev.to, r.to)
+      } else runs.push(r)
+    }
+    runs.sort((x, y) => x.from - y.from)
+    for (const r of runs) {
+      first = Math.min(first, r.from)
+      last = Math.max(last, r.to)
     }
     placed.set(d, runs)
     unplacedByDay.set(d, unplaced)
@@ -114,10 +158,11 @@ export function layoutWeek(byDay: Map<string, Lesson[]>, days: string[]): WeekLa
     let next = first
     for (const run of placed.get(d)!) {
       for (; next < run.from; next++) cells.push({ kind: 'free', period: next })
-      const all = run.groups.flat()
+      const all = [...run.groups.flat(), ...run.detentions]
       cells.push({
         kind: 'lessons',
         groups: run.groups,
+        detentions: run.detentions,
         from: run.from,
         to: run.to,
         start: Math.min(...all.map((l) => minuteOfDay(l.start))),

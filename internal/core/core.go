@@ -774,6 +774,14 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 			out.Lessons = append(out.Lessons, toLesson(ap, s.Loc, q.Lang, overrides, global, teachers))
 		}
 	}
+	// Detentions are the account's own; someone else's schedule never shows them.
+	if !byCode && person.Code == a.ZermeloUser {
+		extra, err := s.detentionLessons(ctx, a, q.From, q.To, q.Lang, overrides, global)
+		if err != nil {
+			return Schedule{}, err
+		}
+		out.Lessons = append(out.Lessons, extra...)
+	}
 	sort.SliceStable(out.Lessons, func(i, j int) bool {
 		a, b := out.Lessons[i], out.Lessons[j]
 		if !a.Start.Equal(b.Start) {

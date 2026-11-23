@@ -228,6 +228,43 @@ func (s *Server) handleResetTeacher(w http.ResponseWriter, r *http.Request, p co
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleDetentions(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	q := r.URL.Query()
+	from, to, err := s.parseRange(q.Get("from"), q.Get("to"), q.Get("week"))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	list, err := s.Core.Detentions(r.Context(), p, r.PathValue("account"), from, to)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeData(w, list)
+}
+
+func (s *Server) handleAddDetention(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	var body core.DetentionInput
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	d, err := s.Core.AddDetention(r.Context(), p, r.PathValue("account"), body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"data": d})
+}
+
+func (s *Server) handleDeleteDetention(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	if err := s.Core.DeleteDetention(r.Context(), p, r.PathValue("account"), r.PathValue("id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (s *Server) handleCalendarFeed(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSuffix(r.PathValue("token"), ".ics")
 	ics, err := s.Core.CalendarFeed(r.Context(), token, lang(r))

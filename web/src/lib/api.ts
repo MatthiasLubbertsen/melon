@@ -53,6 +53,10 @@ export type Schedule = {
   summary: { lessons: number; changed: number; cancelled: number }
 }
 
+/** An hour the account added itself, such as detention. Times are school-local "15:30". */
+export type Detention = { id: string; date: string; start: string; end: string; period: { from: number; to: number } | null; subject: string; title: string; location: string }
+export type DetentionInput = Omit<Detention, 'id'>
+
 export type Announcement = { id: string; title: string; text: string; start: string; end: string }
 export type SubjectEntry = { code: string; name: string; defaultName: string; custom: boolean }
 export type TeacherEntry = { code: string; name: string; custom: boolean }
@@ -215,6 +219,9 @@ export const api = {
     data(request<TeacherEntry>('PUT', `/api/v1/accounts/${account}/teachers/${encodeURIComponent(code)}`, { name })),
   resetTeacher: (account: string, code: string) =>
     data(request<void>('DELETE', `/api/v1/accounts/${account}/teachers/${encodeURIComponent(code)}`)),
+
+  addDetention: (account: string, body: DetentionInput) => data(request<Detention>('POST', `/api/v1/accounts/${account}/detentions`, body)),
+  deleteDetention: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/detentions/${encodeURIComponent(id)}`)),
 
   calendar: (account: string) => data(request<Calendar>('GET', `/api/app/accounts/${account}/calendar`)),
   enableCalendar: (account: string) => data(request<Calendar>('POST', `/api/app/accounts/${account}/calendar`, {})),

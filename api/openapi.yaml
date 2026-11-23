@@ -33,8 +33,9 @@ info:
 
     **Read-only**
 
-    Melon never writes to Zermelo. The only thing you can change is how Melon
-    names subjects and teachers.
+    Melon never writes to Zermelo. The only things you can change are how Melon
+    names subjects and teachers, and detentions an account adds to its own
+    schedule.
 servers:
   - url: /api/v1
 security:
@@ -50,6 +51,8 @@ tags:
     description: Readable names for Zermelo's subject codes.
   - name: Teachers
     description: Names for Zermelo's teacher codes.
+  - name: Detentions
+    description: Extra hours at school (like detention) that an account adds to its own schedule.
 paths:
   /accounts:
     get:
@@ -399,6 +402,81 @@ paths:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/detentions:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Detentions]
+      operationId: listDetentions
+      summary: List detentions
+      description: |
+        The detentions this account added, in a range of days (same `from`/`to`/`week`
+        rules as the schedule; defaults to this week). They also show up in the
+        account's own schedule as lessons with `type: detention`.
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: week, in: query, schema: { type: string, examples: ["2026-W46"] } }
+      responses:
+        "200":
+          description: The detentions, by date and start.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Detention" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Detentions]
+      operationId: addDetention
+      summary: Add a detention
+      description: Adds an hour to this account's own schedule. Only Melon knows about it; nothing is written to Zermelo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, start, end]
+              properties:
+                date: { type: string, format: date }
+                start: { type: string, description: School-local time., examples: ["15:30"] }
+                end: { type: string, examples: ["16:20"] }
+                period: { $ref: "#/components/schemas/Period" }
+                subject: { type: string, maxLength: 32, description: A subject code it is for, e.g. `wi`., examples: ["wi"] }
+                title: { type: string, maxLength: 80, description: A note, or the title when no subject is given. }
+                location: { type: string, maxLength: 40, examples: ["112"] }
+      responses:
+        "201":
+          description: Added.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Detention" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/detentions/{id}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - { name: id, in: path, required: true, schema: { type: string, examples: ["det_k2m9x4q7wz1a"] } }
+    delete:
+      tags: [Detentions]
+      operationId: deleteDetention
+      summary: Remove a detention
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     apiKey:
@@ -491,6 +569,27 @@ components:
             lessons: { type: integer }
             changed: { type: integer }
             cancelled: { type: integer }
+    Period:
+      type: object
+      required: [from, to]
+      properties:
+        from: { type: integer, minimum: 1 }
+        to: { type: integer, minimum: 1 }
+    Detention:
+      type: object
+      required: [id, date, start, end, period, subject, title, location]
+      properties:
+        id: { type: string, examples: ["det_k2m9x4q7wz1a"] }
+        date: { type: string, format: date }
+        start: { type: string, examples: ["15:30"] }
+        end: { type: string, examples: ["16:20"] }
+        period:
+          oneOf:
+            - $ref: "#/components/schemas/Period"
+            - type: "null"
+        subject: { type: string }
+        title: { type: string }
+        location: { type: string }
     Lesson:
       type: object
       required: [id, date, start, end, period, type, title, subjects, teachers, locations, groups, status, changes, changeNote, previous, changeRest, note, online, optional, updatedAt]
@@ -510,7 +609,7 @@ components:
                 to: { type: integer }
         type:
           type: string
-          description: "Zermelo's appointment type. Common values: `lesson`, `exam`, `activity`, `choice`, `talk`, `other`."
+          description: "Zermelo's appointment type. Common values: `lesson`, `exam`, `activity`, `choice`, `talk`, `other`. `detention` is an hour the account added itself (see *Detentions*); its `id` starts with `det_`."
         title: { type: string, description: "A ready-to-show title: the subject names, or the note for activities." }
         subjects:
           type: array
