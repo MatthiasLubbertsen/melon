@@ -1,4 +1,4 @@
-import { CalendarRange, CalendarX, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'keep-day',
+    date: '2026-11-19',
+    icon: CalendarClock,
+    nl: 'Wissel je van kind of account, dan blijf je op dezelfde dag staan.',
+    en: 'Switching child or account now keeps you on the same day.',
+  },
   {
     id: 'dropped-lesson-named',
     date: '2026-11-20',

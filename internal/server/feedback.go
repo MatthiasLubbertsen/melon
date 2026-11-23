@@ -31,9 +31,11 @@ type feedbackView struct {
 	Preview   string    `json:"preview"`
 	Unread    bool      `json:"unread"`
 	Messages  int       `json:"messages"`
-	// Admin views only: whose it is.
+	// Admin views only: whose it is. AccountName is the linked account that
+	// was open when it was sent (a parent's child, say).
 	ProfileID   string `json:"profileId,omitempty"`
 	ProfileName string `json:"profileName,omitempty"`
+	AccountName string `json:"accountName,omitempty"`
 }
 
 type feedbackMessageView struct {
@@ -113,9 +115,10 @@ func (s *Server) handleCreateFeedback(w http.ResponseWriter, r *http.Request, p 
 		return
 	}
 	var body struct {
-		Kind string `json:"kind"`
-		Text string `json:"text"`
-		Page string `json:"page"`
+		Kind    string `json:"kind"`
+		Text    string `json:"text"`
+		Page    string `json:"page"`
+		Account string `json:"account"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
@@ -141,8 +144,19 @@ func (s *Server) handleCreateFeedback(w http.ResponseWriter, r *http.Request, p 
 		writeErr(w, core.Errf(http.StatusTooManyRequests, "too_much_feedback", "You have %d open messages already. Add to one of those instead.", n))
 		return
 	}
+	// Only a name from the profile's own accounts, never whatever was sent.
+	accountName := ""
+	if body.Account != "" {
+		if accounts, err := s.Store.Accounts(r.Context(), p.UserID); err == nil {
+			for _, a := range accounts {
+				if a.ID == body.Account {
+					accountName = a.DisplayName
+				}
+			}
+		}
+	}
 	id := secret.ID("fb")
-	if err := s.Store.CreateFeedback(r.Context(), id, p.UserID, body.Kind, page, text); err != nil {
+	if err := s.Store.CreateFeedback(r.Context(), id, p.UserID, body.Kind, page, accountName, text); err != nil {
 		writeErr(w, err)
 		return
 	}
@@ -189,6 +203,7 @@ func (s *Server) handleAdminFeedback(w http.ResponseWriter, r *http.Request, _ c
 			names[f.UserID] = s.profileName(r.Context(), f.UserID)
 		}
 		v.ProfileName = names[f.UserID]
+		v.AccountName = f.AccountName
 		out = append(out, v)
 	}
 	writeData(w, out)
@@ -263,14 +278,25 @@ func (s *Server) writeThread(w http.ResponseWriter, r *http.Request, id, userID 
 	if asAdmin {
 		v.ProfileID = f.UserID
 		v.ProfileName = s.profileName(r.Context(), f.UserID)
+		v.AccountName = f.AccountName
 	}
 	writeJSON(w, status, map[string]any{"data": map[string]any{"thread": v, "messages": toMessageViews(msgs)}})
 }
 
+// profileName is who is behind a profile: the parent's own name when the
+// accounts are a parent's children, not the first child's.
 func (s *Server) profileName(ctx context.Context, userID string) string {
 	accounts, err := s.Store.Accounts(ctx, userID)
 	if err != nil || len(accounts) == 0 {
 		return ""
+	}
+	for _, a := range accounts {
+		if a.OwnerCode == "" {
+			return a.DisplayName
+		}
+	}
+	if accounts[0].OwnerName != "" {
+		return accounts[0].OwnerName
 	}
 	return accounts[0].DisplayName
 }

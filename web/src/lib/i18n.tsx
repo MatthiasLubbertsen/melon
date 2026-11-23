@@ -238,6 +238,7 @@ const nl = {
   feedbackNone: 'Nog geen berichten.',
   feedbackFrom: 'Van {name}',
   feedbackPage: 'Verstuurd vanaf {page}',
+  feedbackAbout: 'over {name}',
   feedbackViewProfile: 'Profiel bekijken',
   // release notes
   releasesTitle: 'Nieuw in Melon',
@@ -601,6 +602,7 @@ const en: typeof nl = {
   feedbackNone: 'No messages yet.',
   feedbackFrom: 'From {name}',
   feedbackPage: 'Sent from {page}',
+  feedbackAbout: 'about {name}',
   feedbackViewProfile: 'View profile',
   // release notes
   releasesTitle: 'New in Melon',

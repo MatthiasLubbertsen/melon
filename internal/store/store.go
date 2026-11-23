@@ -130,6 +130,9 @@ var columns = []struct{ table, name, ddl string }{
 	// before release notes existed; new profiles start at '' (nothing to
 	// catch up on).
 	{"users", "releases_seen", "TEXT"},
+	// The name on the linked account that was open when feedback was sent,
+	// so a parent's report says which child it is about.
+	{"feedback", "account_name", "TEXT NOT NULL DEFAULT ''"},
 }
 
 func Open(dataDir string) (*Store, error) {
