@@ -25,6 +25,29 @@ export function coveredPeriods(times: Map<number, { start: number; end: number }
   return picked.map((x) => x.p).sort((a, b) => a - b)
 }
 
+/**
+ * The periods a detention can take: this week's, plus the ones before them and
+ * two after (detention is often after school), with times guessed from the
+ * period next to them.
+ */
+export function detentionSlots(times: Map<number, { start: number; end: number }>): Map<number, { start: number; end: number }> {
+  const out = new Map(times)
+  const known = [...times.keys()].sort((a, b) => a - b)
+  if (known.length === 0) return out
+  const first = known[0]
+  const last = known[known.length - 1]
+  for (let p = first - 1; p >= 1; p--) {
+    const next = out.get(p + 1)!
+    out.set(p, { start: next.start - (next.end - next.start), end: next.start })
+  }
+  for (let p = last + 1; p <= last + 2; p++) {
+    const prev = out.get(p - 1)!
+    if (prev.end + (prev.end - prev.start) >= 24 * 60) break
+    out.set(p, { start: prev.end, end: prev.end + (prev.end - prev.start) })
+  }
+  return out
+}
+
 /** A detention the account added itself, not something from Zermelo. */
 export const isDetention = (l: Lesson) => l.type === 'detention'
 

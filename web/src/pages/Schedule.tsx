@@ -7,10 +7,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { AccountMenu } from '@/components/AccountMenu'
 import { Banner } from '@/components/bits'
 import { CodeLookup } from '@/components/CodeLookup'
-import { DetentionDialog } from '@/components/DetentionForm'
+import { DetentionDialog, type PickedPeriods } from '@/components/DetentionForm'
 import { HomeworkMenu } from '@/components/Homework'
 import { LessonCard, LessonDrawer, LessonGroup, SplitCard } from '@/components/Lesson'
-import { isDetention, layoutWeek, lineOf, spanOf } from '@/lib/layoutWeek'
+import { detentionSlots, isDetention, layoutWeek, lineOf, spanOf } from '@/lib/layoutWeek'
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
 import { PeopleSearch } from '@/components/PeopleSearch'
@@ -28,6 +28,9 @@ const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md
 // remounts it, and so does a trip to the admin dashboard or settings. It is
 // kept for the browser tab, and only for the calendar day it was picked on,
 // so tomorrow starts at today again.
+/** Minutes since midnight as 13:05. */
+const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+
 const DAY_KEY = 'melon.day'
 
 function readDay(): string {
@@ -77,7 +80,12 @@ export function Schedule() {
   const [openLesson, setOpenLesson] = useState<Lesson | null>(null)
   const [relinking, setRelinking] = useState(false)
   const [manual, setManual] = useState(false)
-  const [adding, setAdding] = useState(false)
+  // Adding a detention: the dialog, or the dialog stepped aside to pick periods on the schedule.
+  const [adding, setAdding] = useState<'no' | 'form' | 'picking'>('no')
+  const [detentionSession, setDetentionSession] = useState(0)
+  const [picked, setPicked] = useState<PickedPeriods | null>(null)
+  const [draft, setDraft] = useState<PickedPeriods | null>(null)
+  const picking = adding === 'picking'
   const now = useNow(15_000)
 
   // Someone else's schedule belongs to the account it was found with.
@@ -150,7 +158,7 @@ export function Schedule() {
 
   // Swipe left/right to change day on touch screens.
   const swipe = useRef<{ x: number; y: number } | null>(null)
-  const onTouchStart = (e: React.TouchEvent) => (swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY })
+  const onTouchStart = (e: React.TouchEvent) => (swipe.current = picking ? null : { x: e.touches[0].clientX, y: e.touches[0].clientY })
   const onTouchEnd = (e: React.TouchEvent) => {
     const s = swipe.current
     swipe.current = null
@@ -171,6 +179,47 @@ export function Schedule() {
     for (const l of lessons) if (!isDetention(l)) for (const s of l.subjects) if (!seen.has(s.code.toLowerCase())) seen.set(s.code.toLowerCase(), s.name)
     return [...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, locale))
   }, [lessons, locale])
+  // Picking a detention's periods: press on a period of the schedule and drag over the others, within one day.
+  const slots = useMemo(() => detentionSlots(layout.times), [layout.times])
+  const anchor = useRef<PickedPeriods | null>(null)
+  useEffect(() => {
+    const stop = () => (anchor.current = null)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', stop)
+    return () => {
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', stop)
+    }
+  }, [])
+  const periodsAt = (x: number, y: number): PickedPeriods | null => {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-pick-day]')
+    return el ? { date: el.dataset.pickDay!, from: Number(el.dataset.pickFrom), to: Number(el.dataset.pickTo) } : null
+  }
+  const onPickDown = (e: React.PointerEvent) => {
+    const at = picking && periodsAt(e.clientX, e.clientY)
+    if (!at) return
+    e.preventDefault()
+    // Touch captures the pointer to where it went down; let the moves go to whatever is under the finger.
+    ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
+    anchor.current = at
+    setDraft(at)
+  }
+  const onPickMove = (e: React.PointerEvent) => {
+    const a = anchor.current
+    const at = a && periodsAt(e.clientX, e.clientY)
+    if (!a || !at || at.date !== a.date) return
+    setDraft({ date: a.date, from: Math.min(a.from, at.from), to: Math.max(a.to, at.to) })
+  }
+  /** What makes a cell of the schedule pickable while picking, and shows it when it is picked. */
+  const pickable = (date: string, from: number, to: number) =>
+    picking
+      ? {
+          'data-pick-day': date,
+          'data-pick-from': from,
+          'data-pick-to': to,
+          className: cn('relative cursor-pointer touch-none select-none [&_*]:pointer-events-none', draft && draft.date === date && from <= draft.to && to >= draft.from && 'after:absolute after:inset-0 after:rounded-xl after:bg-cantaloupe/25 after:ring-2 after:ring-cantaloupe md:after:bottom-3'),
+        }
+      : { className: '' }
   const weekRooms = useMemo(() => [...new Set(lessons.flatMap((l) => l.locations))].sort((a, b) => a.localeCompare(b, locale, { numeric: true })), [lessons, locale])
   const lessonGroup = (g: Lesson[]) =>
     g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
@@ -226,7 +275,7 @@ export function Schedule() {
           )}
           {/* Detentions belong to your own schedule, not to someone you look up. */}
           {!person && (
-            <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => setAdding(true)}>
+            <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => (setDetentionSession((n) => n + 1), setPicked(null), setAdding('form'))}>
               <Plus />
             </Button>
           )}
@@ -274,7 +323,7 @@ export function Schedule() {
         </div>
       </header>
 
-      <main className="grid gap-3 px-3 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <main className={cn('grid gap-3 px-3 pt-3 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-6', picking && 'pb-28')} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onPointerDown={onPickDown} onPointerMove={onPickMove}>
         {account.canViewOthers && <PeopleSearch accountId={account.id} onPick={setPerson} />}
         {!account.canViewOthers && account.role === 'employee' && <CodeLookup onPick={setPerson} />}
 
@@ -356,7 +405,7 @@ export function Schedule() {
                       <Skeleton className="h-[4.75rem] rounded-xl" />
                     </div>
                   ))
-                ) : ls.length === 0 ? (
+                ) : ls.length === 0 && !picking ? (
                   !query.isError && (
                     <div style={at(1, layout.rows)} className={place}>
                       <div className="grid place-items-center gap-1 rounded-xl border border-dashed px-4 py-10 text-center md:py-6">
@@ -374,14 +423,14 @@ export function Schedule() {
                       return (
                         <Fragment key={c.kind === 'free' ? `free-${c.period}` : `${c.from}-${(c.groups[0]?.[0] ?? c.detentions[0]).id}`}>
                           {c.kind === 'free' ? (
-                            <div style={at(lineOf(layout, c.period))} className={place}>
+                            <div style={at(lineOf(layout, c.period))} {...pickable(d, c.period, c.period)} className={cn(place, pickable(d, c.period, c.period).className)}>
                               <div className="flex h-full min-h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
                                 <span className="font-medium tabular-nums">{t('period', { n: c.period })}</span>
                                 <span>{t('free')}</span>
                               </div>
                             </div>
                           ) : (
-                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid gap-2', c.groups.length + c.detentions.length > 1 && !(c.groups.length === 1 && c.groups[0].length === 1) && 'content-start')}>
+                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} {...pickable(d, c.from, c.to)} className={cn(place, pickable(d, c.from, c.to).className, 'grid gap-2', c.groups.length + c.detentions.length > 1 && !(c.groups.length === 1 && c.groups[0].length === 1) && 'content-start')}>
                               {c.detentions.length > 0 && c.groups.length === 1 && c.groups[0].length === 1 ? (
                                 // One lesson with a detention on top of it: split the card, keep the period and time.
                                 <SplitCard lesson={c.groups[0][0]} detentions={c.detentions} isNow={isNow(c.groups[0][0])} onOpen={setOpenLesson} />
@@ -406,6 +455,21 @@ export function Schedule() {
                         </Fragment>
                       )
                     })}
+                    {/* While picking, the periods after the day's last one, so detention after school can be picked too. */}
+                    {picking &&
+                      [...slots.keys()]
+                        .filter((p) => p >= layout.first && p > Math.max(layout.first - 1, ...dl.cells.map((c) => (c.kind === 'free' ? c.period : c.to))))
+                        .sort((a, b) => a - b)
+                        .map((p) => (
+                          <div key={`pick-${p}`} style={at(lineOf(layout, p))} {...pickable(d, p, p)} className={cn(place, pickable(d, p, p).className)}>
+                            <div className="flex h-full min-h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
+                              <span className="font-medium tabular-nums">{t('period', { n: p })}</span>
+                              <span className="tabular-nums">
+                                {hhmm(slots.get(p)!.start)} – {hhmm(slots.get(p)!.end)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                     {dl.unplaced.map((g, k) => (
                       <div key={g[0].id} style={at(layout.rows + 1 + k)} className={place}>
                         {lessonGroup(g)}
@@ -421,7 +485,42 @@ export function Schedule() {
 
       {/* The open lesson follows the schedule, so homework added in the drawer shows up in it. */}
       <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} homework={account.role !== 'parent'} onClose={() => setOpenLesson(null)} />
-      <DetentionDialog open={adding} onOpenChange={setAdding} accountId={account.id} day={day} times={layout.times} subjects={weekSubjects} rooms={weekRooms} onAdded={setDay} />
+      <DetentionDialog
+        open={adding === 'form'}
+        onOpenChange={(o) => setAdding(o ? 'form' : 'no')}
+        accountId={account.id}
+        day={day}
+        times={layout.times}
+        subjects={weekSubjects}
+        rooms={weekRooms}
+        onAdded={setDay}
+        session={detentionSession}
+        picked={picked}
+        onPick={() => (setDraft(null), setAdding('picking'))}
+      />
+      {picking && (
+        <div role="region" aria-label={t('addDetention')} className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg backdrop-blur animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none">
+          <div className="mx-auto flex max-w-lg items-center gap-2">
+            <p className="flex-1 text-sm" aria-live="polite">
+              {draft ? (
+                <>
+                  <span className="font-medium first-letter:uppercase">{formatDay(draft.date, locale, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                  {' · '}
+                  {draft.from === draft.to ? t('period', { n: draft.from }) : `${t('period', { n: draft.from })} – ${t('period', { n: draft.to })}`}
+                </>
+              ) : (
+                t('detentionPickBar')
+              )}
+            </p>
+            <Button variant="ghost" className="h-10" onClick={() => setAdding('form')}>
+              {t('cancel')}
+            </Button>
+            <Button className="h-10" disabled={!draft} onClick={() => (setPicked(draft), setAdding('form'))}>
+              {t('detentionPickDone')}
+            </Button>
+          </div>
+        </div>
+      )}
       <LinkDialog open={relinking} onOpenChange={setRelinking} initialSchool={account.school} />
     </div>
   )
