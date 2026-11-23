@@ -159,6 +159,9 @@ async function main() {
     await page.getByRole('button', { name: 'Versturen' }).click()
     await page.getByText('Als ik van kind wissel').first().waitFor()
     await page.keyboard.press('Escape')
+    // The "sent" toast covers the header on a phone; let it fade first.
+    await page.mouse.move(phone.width / 2, phone.height - 10)
+    await page.locator('[data-sonner-toast]').waitFor({ state: 'detached' })
     await page.getByRole('link', { name: 'Instellingen' }).click()
     await page.getByRole('link', { name: 'Beheer' }).click()
     await page.getByRole('tab', { name: /Feedback/ }).click()
