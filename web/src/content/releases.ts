@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, Info, Layers, MessageSquareHeart, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -22,6 +22,13 @@ export const releases: Release[] = [
     icon: CalendarClock,
     nl: 'Wissel je van kind of account, dan blijf je op dezelfde dag staan.',
     en: 'Switching child or account now keeps you on the same day.',
+  },
+  {
+    id: 'dropped-lesson-named',
+    date: '2026-11-20',
+    icon: CalendarX,
+    nl: 'Valt een les uit waarvoor je was ingeschreven, dan zie je nu welk vak het was.',
+    en: 'When a lesson you signed up for is cancelled, you now see which subject it was.',
   },
   {
     id: 'week-grid-tighter',

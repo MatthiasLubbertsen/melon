@@ -84,18 +84,29 @@ type Appointment struct {
 	// expected at several lessons at once) it holds those lessons, and the entry
 	// itself is an empty placeholder. On any other entry it lists lessons the
 	// student could swap to, which are not part of the schedule.
-	Actions []struct {
-		Appointment Appointment `json:"appointment"`
-	} `json:"actions"`
+	Actions []Action `json:"actions"`
 }
 
-// expandConflicts replaces each conflict placeholder with the lessons it stands
-// for, so clashing lessons reach callers as the separate lessons they are.
-// Entries that merely list alternatives are left as they are.
+// Action is one lesson a live schedule entry points to.
+type Action struct {
+	Appointment Appointment `json:"appointment"`
+}
+
+// expandConflicts replaces each placeholder with the lessons it stands for:
+//   - a "conflict" entry (the student is expected at several lessons at once)
+//     becomes those lessons, so clashes show as the separate lessons they are;
+//   - an empty entry (no id, no subject) whose lessons were all cancelled
+//     becomes those cancelled lessons. Zermelo sends this when a lesson the
+//     student was enrolled in drops out ("Les vervalt", "Afgemeld"); without
+//     this the slot reads as a nameless "lesson".
+//
+// Entries that merely list alternatives are left as they are, and so is an
+// empty slot that still offers lessons to choose from: those are options, not
+// the student's schedule.
 func expandConflicts(in []Appointment) []Appointment {
 	out := make([]Appointment, 0, len(in))
 	for _, ap := range in {
-		if strings.EqualFold(ap.Type, "conflict") && len(ap.Actions) > 0 {
+		if len(ap.Actions) > 0 && (strings.EqualFold(ap.Type, "conflict") || isEmptyPlaceholder(ap) && allCancelled(ap.Actions)) {
 			for _, a := range ap.Actions {
 				out = append(out, a.Appointment)
 			}
@@ -104,6 +115,19 @@ func expandConflicts(in []Appointment) []Appointment {
 		out = append(out, ap)
 	}
 	return out
+}
+
+func isEmptyPlaceholder(ap Appointment) bool {
+	return ap.ID == 0 && len(ap.Subjects) == 0
+}
+
+func allCancelled(actions []Action) bool {
+	for _, a := range actions {
+		if !a.Appointment.Cancelled {
+			return false
+		}
+	}
+	return true
 }
 
 // Course is a class a student follows in one school year. Only the teachers
