@@ -257,6 +257,20 @@ func (s *Server) handleAddDetention(w http.ResponseWriter, r *http.Request, p co
 	writeJSON(w, http.StatusCreated, map[string]any{"data": d})
 }
 
+func (s *Server) handleUpdateDetention(w http.ResponseWriter, r *http.Request, p core.Principal) {
+	var body core.DetentionInput
+	if err := readJSON(r, &body); err != nil {
+		writeErr(w, err)
+		return
+	}
+	d, err := s.Core.UpdateDetention(r.Context(), p, r.PathValue("account"), r.PathValue("id"), body)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeData(w, d)
+}
+
 func (s *Server) handleDeleteDetention(w http.ResponseWriter, r *http.Request, p core.Principal) {
 	if err := s.Core.DeleteDetention(r.Context(), p, r.PathValue("account"), r.PathValue("id")); err != nil {
 		writeErr(w, err)

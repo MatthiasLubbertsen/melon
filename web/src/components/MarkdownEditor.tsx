@@ -21,6 +21,7 @@ function wrap(e: Edit, before: string, after: string, placeholder: string): Edit
 /**
  * Puts a prefix in front of every selected line, or takes it off when every
  * line already has it. prefix gets the line's index, for numbered lists.
+ * The cursor lands at the end of the last line, so you can type straight on.
  */
 function prefixLines(e: Edit, prefix: (i: number) => string, has: RegExp): Edit {
   const { value } = e
@@ -30,7 +31,7 @@ function prefixLines(e: Edit, prefix: (i: number) => string, has: RegExp): Edit 
   const lines = value.slice(from, to).split('\n')
   const remove = lines.every((l) => has.test(l))
   const next = lines.map((l, i) => (remove ? l.replace(has, '') : prefix(i) + l.replace(/^(\s*([-*]|\d+\.)\s+(\[[ xX]\]\s+)?|#{1,3}\s+)/, ''))).join('\n')
-  return { value: value.slice(0, from) + next + value.slice(to), start: from, end: from + next.length }
+  return { value: value.slice(0, from) + next + value.slice(to), start: from + next.length, end: from + next.length }
 }
 
 type Tool = { icon: LucideIcon; label: Key; key?: string; hidden?: boolean; run: (e: Edit, t: (k: Key) => string) => Edit }

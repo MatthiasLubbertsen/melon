@@ -129,8 +129,39 @@ export type AdminStats = {
 }
 export type UsageChannel = 'session' | 'api_key' | 'oauth' | 'calendar' | 'admin'
 export type Usage = { day: string; channel: UsageChannel; requests: number; lessons: number }
-export type SchoolStat = { school: string; profiles: number; accounts: number; students: number; staff: number; teacherNames: number }
-export type AdminOverview = { stats: AdminStats; totals: { requests: number; lessons: number }; since: string; today: string; usage: Usage[]; schools: SchoolStat[]; unreadFeedback: number }
+export type SchoolStat = { school: string; profiles: number; accounts: number; students: number; staff: number; teacherNames: number; homework: number; detentions: number }
+export type PlannerStats = {
+  homework: number
+  homeworkDone: number
+  homeworkOverdue: number
+  homeworkGone: number
+  homeworkChecklists: number
+  homeworkNew7d: number
+  homeworkAccounts: number
+  weekPlans: number
+  detentions: number
+  detentionsUpcoming: number
+  detentionsNew7d: number
+  detentionAccounts: number
+  detentionMinutes: number
+  /** Monday first. */
+  detentionsByWeekday: number[]
+}
+export type Planner = {
+  stats: PlannerStats
+  subjects: { code: string; name: string; homework: number; homeworkDone: number; detentions: number }[]
+  days: { day: string; homework: number; detentions: number }[]
+}
+export type AdminOverview = {
+  stats: AdminStats
+  totals: { requests: number; lessons: number }
+  since: string
+  today: string
+  usage: Usage[]
+  schools: SchoolStat[]
+  unreadFeedback: number
+  planner: Planner
+}
 export type FeedbackKind = 'idea' | 'bug'
 export type FeedbackSummary = {
   id: string
@@ -246,6 +277,9 @@ export const api = {
   resetTeacher: (account: string, code: string) =>
     data(request<void>('DELETE', `/api/v1/accounts/${account}/teachers/${encodeURIComponent(code)}`)),
 
+  detentions: (account: string, p: { from: string; to: string }) => data(request<Detention[]>('GET', `/api/v1/accounts/${account}/detentions${qs(p)}`)),
+  updateDetention: (account: string, id: string, body: DetentionInput) =>
+    data(request<Detention>('PUT', `/api/v1/accounts/${account}/detentions/${encodeURIComponent(id)}`, body)),
   addDetention: (account: string, body: DetentionInput) => data(request<Detention>('POST', `/api/v1/accounts/${account}/detentions`, body)),
   deleteDetention: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/detentions/${encodeURIComponent(id)}`)),
   homework: {
@@ -279,7 +313,7 @@ export const api = {
   },
 
   admin: {
-    overview: () => data(request<AdminOverview>('GET', '/api/app/admin/overview')),
+    overview: (lang?: string) => data(request<AdminOverview>('GET', `/api/app/admin/overview${qs({ lang })}`)),
     feedback: (status?: 'open' | 'closed') => data(request<FeedbackSummary[]>('GET', `/api/app/admin/feedback${qs({ status })}`)),
     feedbackThread: (id: string) => data(request<FeedbackThread>('GET', `/api/app/admin/feedback/${id}`)),
     feedbackReply: (id: string, text: string) => data(request<FeedbackThread>('POST', `/api/app/admin/feedback/${id}/messages`, { text })),

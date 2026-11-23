@@ -332,6 +332,18 @@ async function main() {
     await page.waitForFunction(() => !document.querySelector('[data-sonner-toast]'))
     await page.locator('[data-status="detention"]:visible').first().scrollIntoViewIfNeeded()
     await shot(`24-detention-schedule-${theme}`)
+    // Change it again from the lesson sheet: the form comes back filled in.
+    await page.locator('[data-status="detention"]:visible').first().click()
+    await page.getByRole('button', { name: 'Aanpassen' }).click()
+    const edit = page.getByRole('dialog', { name: 'Nakomen aanpassen' })
+    await edit.waitFor()
+    if ((await edit.locator('#detention-location').inputValue()) !== 'B014') problems.push('editing a detention did not fill in its location')
+    await edit.locator('#detention-location').fill('B015')
+    await edit.locator('#detention-date').focus()
+    await shot(`25-detention-edit-${theme}`)
+    await edit.getByRole('button', { name: 'Opslaan' }).click()
+    await edit.waitFor({ state: 'detached' })
+    await page.getByText('B015').first().waitFor()
     await context.close()
   }
 
@@ -345,6 +357,22 @@ async function main() {
   await page.waitForLoadState('networkidle')
   await shot('12-api-docs-light')
   await context.close()
+
+  // The admin dashboard's homework and detention numbers. CI makes the demo parent an admin.
+  {
+    const { context, page, shot } = await session({ viewport: desktop, theme: 'light' })
+    await page.goto(BASE)
+    await page.locator('#school').fill('demo')
+    await page.locator('#secret').fill('ouder')
+    await page.getByRole('button', { name: 'Koppelen' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.goto(`${BASE}/admin`)
+    const planner = page.getByText('Huiswerk en nakomen', { exact: true })
+    await planner.waitFor()
+    await planner.evaluate((el) => el.closest('[data-slot="card"]')?.scrollIntoView({ block: 'start' }) ?? el.scrollIntoView({ block: 'start' }))
+    await shot('13-admin-planner-light')
+    await context.close()
+  }
 
   await browser.close()
   if (problems.length) {

@@ -633,6 +633,39 @@ paths:
     parameters:
       - $ref: "#/components/parameters/account"
       - { name: id, in: path, required: true, schema: { type: string, examples: ["det_k2m9x4q7wz1a"] } }
+    put:
+      tags: [Detentions]
+      operationId: updateDetention
+      summary: Change a detention
+      description: Replaces the detention with the body, which takes the same fields as adding one. Fields left out are cleared.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, start, end]
+              properties:
+                date: { type: string, format: date }
+                start: { type: string, description: School-local time., examples: ["15:30"] }
+                end: { type: string, examples: ["16:20"] }
+                period: { $ref: "#/components/schemas/Period" }
+                subject: { type: string, maxLength: 32, examples: ["wi"] }
+                title: { type: string, maxLength: 80 }
+                location: { type: string, maxLength: 40, examples: ["112"] }
+      responses:
+        "200":
+          description: Changed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Detention" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Detentions]
       operationId: deleteDetention

@@ -49,6 +49,24 @@ func TestDetentions(t *testing.T) {
 		t.Errorf("detention lesson: %v", l)
 	}
 
+	// Editing moves it to two periods with a note and no subject.
+	code, body = c.do("PUT", base+"/"+id, "", map[string]any{"date": day, "start": "15:30", "end": "17:10", "period": map[string]any{"from": 8, "to": 9}, "title": "Strafwerk"})
+	if code != http.StatusOK {
+		t.Fatalf("update: %d %v", code, body)
+	}
+	if d := body["data"].(map[string]any); d["id"] != id || d["end"] != "17:10" || d["subject"] != "" || d["location"] != "" {
+		t.Errorf("updated detention: %v", d)
+	}
+	if l := find("/api/v1/accounts/" + student + "/schedule?from=today"); l == nil || l["title"] != "Strafwerk" || len(l["locations"].([]any)) != 0 {
+		t.Errorf("updated detention lesson: %v", l)
+	}
+	if code, _ := c.do("PUT", base+"/"+id, "", map[string]any{"date": day, "start": "17:30", "end": "16:30"}); code != http.StatusBadRequest {
+		t.Errorf("bad update: %d", code)
+	}
+	if code, _ := c.do("PUT", base+"/det_nope", "", map[string]any{"date": day, "start": "15:30", "end": "16:30"}); code != http.StatusNotFound {
+		t.Errorf("update of a missing one: %d", code)
+	}
+
 	if code, _ := c.do("DELETE", base+"/"+id, "", nil); code != http.StatusNoContent {
 		t.Fatalf("delete: %d", code)
 	}

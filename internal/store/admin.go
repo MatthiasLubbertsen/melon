@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"strings"
 )
 
@@ -103,19 +104,25 @@ func (s *Store) UsageTotal(ctx context.Context) (requests, lessons int64, err er
 }
 
 type School struct {
-	School   string `json:"school"`
-	Profiles int    `json:"profiles"`
-	Accounts int    `json:"accounts"`
-	Students int    `json:"students"`
-	Staff    int    `json:"staff"`
-	Teachers int    `json:"teacherNames"` // names an admin set for this school
+	School     string `json:"school"`
+	Profiles   int    `json:"profiles"`
+	Accounts   int    `json:"accounts"`
+	Students   int    `json:"students"`
+	Staff      int    `json:"staff"`
+	Teachers   int    `json:"teacherNames"` // names an admin set for this school
+	Homework   int    `json:"homework"`
+	Detentions int    `json:"detentions"`
 }
 
 func (s *Store) Schools(ctx context.Context) ([]School, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT school, SUM(p), SUM(a), SUM(st), SUM(em), SUM(t) FROM (
-		SELECT school, COUNT(DISTINCT user_id) AS p, COUNT(*) AS a, SUM(role = 'student') AS st, SUM(role = 'employee') AS em, 0 AS t FROM accounts GROUP BY school
+	rows, err := s.db.QueryContext(ctx, `SELECT school, SUM(p), SUM(a), SUM(st), SUM(em), SUM(t), SUM(hw), SUM(det) FROM (
+		SELECT school, COUNT(DISTINCT user_id) AS p, COUNT(*) AS a, SUM(role = 'student') AS st, SUM(role = 'employee') AS em, 0 AS t, 0 AS hw, 0 AS det FROM accounts GROUP BY school
 		UNION ALL
-		SELECT school, 0, 0, 0, 0, COUNT(*) FROM school_teachers GROUP BY school
+		SELECT school, 0, 0, 0, 0, COUNT(*), 0, 0 FROM school_teachers GROUP BY school
+		UNION ALL
+		SELECT a.school, 0, 0, 0, 0, 0, COUNT(*), 0 FROM homework h JOIN accounts a ON a.id = h.account_id GROUP BY a.school
+		UNION ALL
+		SELECT a.school, 0, 0, 0, 0, 0, 0, COUNT(*) FROM detentions d JOIN accounts a ON a.id = d.account_id GROUP BY a.school
 	) GROUP BY school ORDER BY SUM(a) DESC, school`)
 	if err != nil {
 		return nil, err
@@ -124,7 +131,7 @@ func (s *Store) Schools(ctx context.Context) ([]School, error) {
 	out := []School{}
 	for rows.Next() {
 		var sc School
-		if err := rows.Scan(&sc.School, &sc.Profiles, &sc.Accounts, &sc.Students, &sc.Staff, &sc.Teachers); err != nil {
+		if err := rows.Scan(&sc.School, &sc.Profiles, &sc.Accounts, &sc.Students, &sc.Staff, &sc.Teachers, &sc.Homework, &sc.Detentions); err != nil {
 			return nil, err
 		}
 		out = append(out, sc)
@@ -384,4 +391,173 @@ func (s *Store) UserExists(ctx context.Context, id string) (bool, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE id = ?`, id).Scan(&n)
 	return n > 0, err
+}
+
+// ---- homework and detentions ----
+
+// Planner is what people do with homework and detentions, counted over
+// everyone. Only numbers: no text, no names.
+type Planner struct {
+	Homework           int `json:"homework"`
+	HomeworkDone       int `json:"homeworkDone"`
+	HomeworkOverdue    int `json:"homeworkOverdue"` // not done and its lesson is over
+	HomeworkGone       int `json:"homeworkGone"`    // its lesson dropped out of Zermelo
+	HomeworkChecklists int `json:"homeworkChecklists"`
+	HomeworkNew7d      int `json:"homeworkNew7d"`
+	HomeworkAccounts   int `json:"homeworkAccounts"`
+	WeekPlans          int `json:"weekPlans"`
+	Detentions         int `json:"detentions"`
+	DetentionsUpcoming int `json:"detentionsUpcoming"`
+	DetentionsNew7d    int `json:"detentionsNew7d"`
+	DetentionAccounts  int `json:"detentionAccounts"`
+	DetentionMinutes   int `json:"detentionMinutes"`
+	// DetentionsByWeekday counts detentions per day of the week, Monday first.
+	DetentionsByWeekday [7]int `json:"detentionsByWeekday"`
+}
+
+// minutesSQL turns a "15:30" column into minutes since midnight.
+func minutesSQL(col string) string {
+	return `(CAST(substr(` + col + `, 1, 2) AS INTEGER) * 60 + CAST(substr(` + col + `, 4, 2) AS INTEGER))`
+}
+
+// Planner counts homework and detentions. today is the school's "YYYY-MM-DD".
+func (s *Store) Planner(ctx context.Context, today string) (Planner, error) {
+	n := now()
+	var p Planner
+	err := s.db.QueryRowContext(ctx, `SELECT
+		(SELECT COUNT(*) FROM homework),
+		(SELECT COUNT(*) FROM homework WHERE done),
+		(SELECT COUNT(*) FROM homework WHERE NOT done AND lesson_end < ? AND lesson_status != 'gone'),
+		(SELECT COUNT(*) FROM homework WHERE lesson_status = 'gone'),
+		(SELECT COUNT(*) FROM homework WHERE text LIKE '%- [ ]%' OR text LIKE '%- [x]%' OR text LIKE '%- [X]%'),
+		(SELECT COUNT(*) FROM homework WHERE created_at > ?),
+		(SELECT COUNT(DISTINCT account_id) FROM homework),
+		(SELECT COUNT(*) FROM week_plans),
+		(SELECT COUNT(*) FROM detentions),
+		(SELECT COUNT(*) FROM detentions WHERE date >= ?),
+		(SELECT COUNT(*) FROM detentions WHERE created_at > ?),
+		(SELECT COUNT(DISTINCT account_id) FROM detentions),
+		(SELECT COALESCE(SUM(`+minutesSQL("end")+` - `+minutesSQL("start")+`), 0) FROM detentions)`,
+		n, n-7*86400, today, n-7*86400).Scan(
+		&p.Homework, &p.HomeworkDone, &p.HomeworkOverdue, &p.HomeworkGone, &p.HomeworkChecklists, &p.HomeworkNew7d, &p.HomeworkAccounts,
+		&p.WeekPlans, &p.Detentions, &p.DetentionsUpcoming, &p.DetentionsNew7d, &p.DetentionAccounts, &p.DetentionMinutes)
+	if err != nil {
+		return p, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT CAST(strftime('%w', date) AS INTEGER), COUNT(*) FROM detentions GROUP BY 1`)
+	if err != nil {
+		return p, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var wd sql.NullInt64
+		var c int
+		if err := rows.Scan(&wd, &c); err != nil {
+			return p, err
+		}
+		if wd.Valid {
+			p.DetentionsByWeekday[(wd.Int64+6)%7] += c // Sunday is 0 in SQLite
+		}
+	}
+	return p, rows.Err()
+}
+
+// PlannerSubject is how much homework and detention one subject code gets.
+type PlannerSubject struct {
+	Code         string `json:"code"`
+	Homework     int    `json:"homework"`
+	HomeworkDone int    `json:"homeworkDone"`
+	Detentions   int    `json:"detentions"`
+}
+
+// PlannerSubjects lists subject codes by how much homework and detention they
+// get, most first. Homework on a lesson with several subjects counts for its first.
+func (s *Store) PlannerSubjects(ctx context.Context, limit int) ([]PlannerSubject, error) {
+	by := map[string]*PlannerSubject{}
+	get := func(code string) *PlannerSubject {
+		code = strings.ToLower(code)
+		if by[code] == nil {
+			by[code] = &PlannerSubject{Code: code}
+		}
+		return by[code]
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT lesson_subjects, COUNT(*), SUM(done) FROM homework GROUP BY lesson_subjects`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var subjects string
+		var c, done int
+		if err := rows.Scan(&subjects, &c, &done); err != nil {
+			return nil, err
+		}
+		code := ""
+		if list := split(subjects); len(list) > 0 {
+			code = list[0]
+		}
+		ps := get(code)
+		ps.Homework += c
+		ps.HomeworkDone += done
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	drows, err := s.db.QueryContext(ctx, `SELECT subject, COUNT(*) FROM detentions GROUP BY subject`)
+	if err != nil {
+		return nil, err
+	}
+	defer drows.Close()
+	for drows.Next() {
+		var code string
+		var c int
+		if err := drows.Scan(&code, &c); err != nil {
+			return nil, err
+		}
+		get(code).Detentions += c
+	}
+	if err := drows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]PlannerSubject, 0, len(by))
+	for _, ps := range by {
+		out = append(out, *ps)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i].Homework+out[i].Detentions, out[j].Homework+out[j].Detentions
+		if a != b {
+			return a > b
+		}
+		return out[i].Code < out[j].Code
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// PlannerAddedSince lists when each homework and detention made after since
+// (unix seconds) was added, for counting per day.
+func (s *Store) PlannerAddedSince(ctx context.Context, since int64) (homework, detentions []int64, err error) {
+	read := func(table string) ([]int64, error) {
+		rows, err := s.db.QueryContext(ctx, `SELECT created_at FROM `+table+` WHERE created_at >= ?`, since)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := []int64{}
+		for rows.Next() {
+			var at int64
+			if err := rows.Scan(&at); err != nil {
+				return nil, err
+			}
+			out = append(out, at)
+		}
+		return out, rows.Err()
+	}
+	if homework, err = read("homework"); err != nil {
+		return nil, nil, err
+	}
+	detentions, err = read("detentions")
+	return homework, detentions, err
 }

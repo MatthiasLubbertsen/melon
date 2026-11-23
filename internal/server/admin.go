@@ -158,7 +158,7 @@ func (s *Server) adminRoutes(mux *http.ServeMux) {
 // ---- overview ----
 
 func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request, _ core.Principal) {
-	out, err := s.overview(r.Context())
+	out, err := s.overview(r.Context(), lang(r))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -166,12 +166,16 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request, _ c
 	writeData(w, out)
 }
 
-func (s *Server) overview(ctx context.Context) (map[string]any, error) {
+func (s *Server) overview(ctx context.Context, l string) (map[string]any, error) {
 	// Show what was counted up to now, not up to the last flush.
 	if err := s.Core.Usage.Flush(ctx, s.Store); err != nil {
 		return nil, err
 	}
 	stats, err := s.Store.Stats(ctx)
+	if err != nil {
+		return nil, err
+	}
+	planner, err := s.planner(ctx, l)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +204,68 @@ func (s *Server) overview(ctx context.Context) (map[string]any, error) {
 		"today":          s.Core.Today().Format(time.DateOnly),
 		"usage":          usage,
 		"schools":        schools,
+		"planner":        planner,
 	}, nil
+}
+
+type plannerSubject struct {
+	store.PlannerSubject
+	Name string `json:"name"`
+}
+
+type plannerDay struct {
+	Day        string `json:"day"`
+	Homework   int    `json:"homework"`
+	Detentions int    `json:"detentions"`
+}
+
+// planner is what people do with homework and detentions: totals, the
+// subjects they are for, and how many were added each of the last 30 days.
+func (s *Server) planner(ctx context.Context, lang string) (map[string]any, error) {
+	today := s.Core.Today()
+	stats, err := s.Store.Planner(ctx, today.Format(time.DateOnly))
+	if err != nil {
+		return nil, err
+	}
+	top, err := s.Store.PlannerSubjects(ctx, 10)
+	if err != nil {
+		return nil, err
+	}
+	names := map[string]string{}
+	if defaults, err := s.Core.DefaultSubjects(ctx, lang); err == nil {
+		for _, d := range defaults {
+			names[strings.ToLower(d.Code)] = d.Name
+		}
+	}
+	subjects := make([]plannerSubject, 0, len(top))
+	for _, ps := range top {
+		name := names[ps.Code]
+		if name == "" {
+			name = strings.ToUpper(ps.Code)
+		}
+		subjects = append(subjects, plannerSubject{PlannerSubject: ps, Name: name})
+	}
+	first := today.AddDate(0, 0, -29)
+	homework, detentions, err := s.Store.PlannerAddedSince(ctx, first.Unix())
+	if err != nil {
+		return nil, err
+	}
+	days := make([]plannerDay, 30)
+	index := map[string]int{}
+	for i := range days {
+		days[i].Day = first.AddDate(0, 0, i).Format(time.DateOnly)
+		index[days[i].Day] = i
+	}
+	count := func(list []int64, add func(*plannerDay)) {
+		for _, at := range list {
+			if i, ok := index[time.Unix(at, 0).In(s.Core.Loc).Format(time.DateOnly)]; ok {
+				add(&days[i])
+			}
+		}
+	}
+	count(homework, func(d *plannerDay) { d.Homework++ })
+	count(detentions, func(d *plannerDay) { d.Detentions++ })
+	return map[string]any{"stats": stats, "subjects": subjects, "days": days}, nil
 }
 
 // ---- profiles ----

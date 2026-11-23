@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { api } from '@/lib/api'
+import { api, type Detention } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { coveredPeriods, detentionSlots } from '@/lib/layoutWeek'
 import { cn } from '@/lib/utils'
@@ -20,9 +20,9 @@ type Range = { from: number; to: number }
 export type PickedPeriods = Range & { date: string }
 
 /**
- * Adding a detention: pick the periods by dragging over the schedule (the
- * dialog steps aside for it) or type the times, then optionally link a
- * subject and say where.
+ * Adding or changing a detention: pick the periods by dragging over the
+ * schedule (the dialog steps aside for it) or type the times, then
+ * optionally link a subject and say where.
  */
 export function DetentionDialog({
   open,
@@ -36,6 +36,7 @@ export function DetentionDialog({
   session,
   picked,
   onPick,
+  editing,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -54,6 +55,8 @@ export function DetentionDialog({
   picked: PickedPeriods | null
   /** Step aside to pick the periods on the schedule. */
   onPick: () => void
+  /** The detention being changed, or null when adding a new one. */
+  editing: Detention | null
 }) {
   const { t } = useI18n()
   const qc = useQueryClient()
@@ -67,15 +70,15 @@ export function DetentionDialog({
   const [note, setNote] = useState('')
   const [location, setLocation] = useState('')
 
-  // Start fresh on the day being looked at for every new detention.
+  // Start fresh on the day being looked at for every new detention, or from the one being changed.
   useEffect(() => {
-    setDate(day)
-    setRange(null)
-    setStart('')
-    setEnd('')
-    setSubject('')
-    setNote('')
-    setLocation('')
+    setDate(editing?.date ?? day)
+    setRange(editing?.period ?? null)
+    setStart(editing?.start ?? '')
+    setEnd(editing?.end ?? '')
+    setSubject(editing?.subject ?? '')
+    setNote(editing?.title ?? '')
+    setLocation(editing?.location ?? '')
     // Not on day: the day changes while picking on the schedule, and that must not empty the form.
   }, [session]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -113,10 +116,13 @@ export function DetentionDialog({
   const badTime = !Number.isNaN(minutes(start)) && !Number.isNaN(minutes(end)) && minutes(end) <= minutes(start)
 
   const add = useMutation({
-    mutationFn: () => api.addDetention(accountId, { date, start, end, period: range, subject, title: note.trim(), location: location.trim() }),
+    mutationFn: () => {
+      const body = { date, start, end, period: range, subject, title: note.trim(), location: location.trim() }
+      return editing ? api.updateDetention(accountId, editing.id, body) : api.addDetention(accountId, body)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['schedule', accountId] })
-      toast.success(t('detentionAdded'))
+      toast.success(t(editing ? 'detentionSaved' : 'detentionAdded'))
       onAdded(date)
       onOpenChange(false)
     },
@@ -129,7 +135,7 @@ export function DetentionDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
             <Hourglass className="size-5 text-cantaloupe-ink" />
-            {t('addDetention')}
+            {t(editing ? 'editDetention' : 'addDetention')}
           </DialogTitle>
           <DialogDescription>{t('detentionIntro')}</DialogDescription>
         </DialogHeader>
@@ -214,7 +220,7 @@ export function DetentionDialog({
             {t('cancel')}
           </Button>
           <Button type="submit" form="detention-form" className="h-11" disabled={!valid || add.isPending}>
-            {t('detentionAdd')}
+            {t(editing ? 'save' : 'detentionAdd')}
           </Button>
         </DialogFooter>
       </DialogContent>
