@@ -1,15 +1,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDown, CalendarCheck, ChevronLeft, ChevronRight, CloudOff, Megaphone, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, CalendarCheck, ChevronLeft, ChevronRight, CloudOff, Megaphone, Plus, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AccountMenu } from '@/components/AccountMenu'
 import { Banner } from '@/components/bits'
 import { CodeLookup } from '@/components/CodeLookup'
+import { DetentionDialog } from '@/components/DetentionForm'
 import { HomeworkMenu } from '@/components/Homework'
-import { LessonCard, LessonDrawer, LessonGroup } from '@/components/Lesson'
-import { layoutWeek, lineOf, spanOf } from '@/lib/layoutWeek'
+import { LessonCard, LessonDrawer, LessonGroup, SplitCard } from '@/components/Lesson'
+import { isDetention, layoutWeek, lineOf, spanOf } from '@/lib/layoutWeek'
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
 import { PeopleSearch } from '@/components/PeopleSearch'
@@ -76,6 +77,7 @@ export function Schedule() {
   const [openLesson, setOpenLesson] = useState<Lesson | null>(null)
   const [relinking, setRelinking] = useState(false)
   const [manual, setManual] = useState(false)
+  const [adding, setAdding] = useState(false)
   const now = useNow(15_000)
 
   // Someone else's schedule belongs to the account it was found with.
@@ -163,6 +165,13 @@ export function Schedule() {
 
   const isNow = (l: Lesson) => new Date(l.start).getTime() <= now && now < new Date(l.end).getTime()
   const layout = useMemo(() => layoutWeek(byDay, days), [byDay, days])
+  // Subjects a detention can be linked to: the ones on this week's schedule.
+  const weekSubjects = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const l of lessons) if (!isDetention(l)) for (const s of l.subjects) if (!seen.has(s.code.toLowerCase())) seen.set(s.code.toLowerCase(), s.name)
+    return [...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, locale))
+  }, [lessons, locale])
+  const weekRooms = useMemo(() => [...new Set(lessons.flatMap((l) => l.locations))].sort((a, b) => a.localeCompare(b, locale, { numeric: true })), [lessons, locale])
   const lessonGroup = (g: Lesson[]) =>
     g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
@@ -214,12 +223,18 @@ export function Schedule() {
               {t('today')}
             </Button>
           )}
+          {/* Detentions belong to your own schedule, not to someone you look up. */}
+          {!person && (
+            <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => setAdding(true)}>
+              <Plus />
+            </Button>
+          )}
         </div>
         <nav aria-label={t('week', { n: weekNumber(day) })} className="-mx-1 flex gap-1 pt-1 pb-2 md:hidden">
           {days.map((d) => {
             const ls = byDay.get(d) ?? []
             const cancelled = ls.some((l) => l.status === 'cancelled')
-            const changed = ls.some((l) => l.status === 'changed')
+            const changed = ls.some((l) => l.status === 'changed' || isDetention(l))
             const selected = d === day
             return (
               <button
@@ -356,7 +371,7 @@ export function Schedule() {
                       const last = c.kind === 'free' ? c.period : c.to
                       const pause = dl.breaks.find((b) => b.after === last)
                       return (
-                        <Fragment key={c.kind === 'free' ? `free-${c.period}` : c.groups[0][0].id}>
+                        <Fragment key={c.kind === 'free' ? `free-${c.period}` : `${c.from}-${(c.groups[0]?.[0] ?? c.detentions[0]).id}`}>
                           {c.kind === 'free' ? (
                             <div style={at(lineOf(layout, c.period))} className={place}>
                               <div className="flex h-full min-h-11 items-center justify-center gap-2 rounded-xl border border-dashed border-muted-foreground/30 px-4 py-2 text-center text-sm text-muted-foreground">
@@ -365,8 +380,18 @@ export function Schedule() {
                               </div>
                             </div>
                           ) : (
-                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid gap-2', c.groups.length > 1 && 'content-start')}>
-                              {c.groups.map((g) => lessonGroup(g))}
+                            <div style={at(lineOf(layout, c.from), spanOf(c.from, c.to))} className={cn(place, 'grid gap-2', c.groups.length + c.detentions.length > 1 && !(c.groups.length === 1 && c.groups[0].length === 1) && 'content-start')}>
+                              {c.detentions.length > 0 && c.groups.length === 1 && c.groups[0].length === 1 ? (
+                                // One lesson with a detention on top of it: split the card, keep the period and time.
+                                <SplitCard lesson={c.groups[0][0]} detentions={c.detentions} isNow={isNow(c.groups[0][0])} onOpen={setOpenLesson} />
+                              ) : (
+                                <>
+                                  {c.groups.map((g) => lessonGroup(g))}
+                                  {c.detentions.map((d) => (
+                                    <LessonCard key={d.id} lesson={d} isNow={isNow(d)} onOpen={() => setOpenLesson(d)} />
+                                  ))}
+                                </>
+                              )}
                             </div>
                           )}
                           {/* A break sits on the grid line between two periods. */}
@@ -395,6 +420,7 @@ export function Schedule() {
 
       {/* The open lesson follows the schedule, so homework added in the drawer shows up in it. */}
       <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} onClose={() => setOpenLesson(null)} />
+      <DetentionDialog open={adding} onOpenChange={setAdding} accountId={account.id} day={day} times={layout.times} subjects={weekSubjects} rooms={weekRooms} onAdded={setDay} />
       <LinkDialog open={relinking} onOpenChange={setRelinking} initialSchool={account.school} />
     </div>
   )

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, MapPin, NotebookPen, User, Users, Video } from 'lucide-react'
+import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, Hourglass, MapPin, NotebookPen, Trash2, User, Users, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils'
 const changeIcons = { teacher: User, location: DoorOpen, group: Users, time: ArrowRightLeft }
 
 function typeLabel(type: string): Key | null {
-  return type === 'lesson' ? null : ((['exam', 'activity', 'choice', 'talk'].includes(type) ? `type_${type}` : 'type_other') as Key)
+  return type === 'lesson' || type === 'detention' ? null : ((['exam', 'activity', 'choice', 'talk'].includes(type) ? `type_${type}` : 'type_other') as Key)
 }
 
 /**
@@ -39,6 +39,12 @@ function Chips({ lesson, isNow, homework }: { lesson: Lesson; isNow?: boolean; h
   return (
     <>
       {isNow && <Chip tone="honeydew">{t('now')}</Chip>}
+      {lesson.type === 'detention' && (
+        <Chip tone="cantaloupe">
+          <Hourglass />
+          {t('detention')}
+        </Chip>
+      )}
       {lesson.status === 'cancelled' && (
         <Chip tone="watermelon">
           <Ban />
@@ -81,13 +87,14 @@ function Chips({ lesson, isNow, homework }: { lesson: Lesson; isNow?: boolean; h
 export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: boolean; onOpen: () => void }) {
   const { t, lang, locale } = useI18n()
   const cancelled = lesson.status === 'cancelled'
-  const changed = lesson.status === 'changed'
+  // A detention looks like a change: it is something extra you must not miss.
+  const changed = lesson.status === 'changed' || lesson.type === 'detention'
   const where = [lesson.locations.join(', '), lesson.teachers.map((x) => x.name).join(', ')].filter(Boolean).join(' · ')
   return (
     <button
       type="button"
       onClick={onOpen}
-      data-status={lesson.status}
+      data-status={lesson.type === 'detention' ? 'detention' : lesson.status}
       className={cn(
         'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-2.5 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:h-full md:gap-2.5 md:py-2 md:pr-2.5 md:pl-3.5',
         cancelled && 'border-watermelon/50',
@@ -183,6 +190,67 @@ export function LessonGroup({ lessons, isNow, onOpen }: { lessons: Lesson[]; isN
   )
 }
 
+/**
+ * A lesson with a detention in the same period: the period and time stay on
+ * the left, and the card splits in two, the lesson on top and the detention
+ * below. Each half opens its own details.
+ */
+export function SplitCard({ lesson, detentions, isNow, onOpen }: { lesson: Lesson; detentions: Lesson[]; isNow: boolean; onOpen: (l: Lesson) => void }) {
+  const { t, lang, locale } = useI18n()
+  const cancelled = lesson.status === 'cancelled'
+  const where = [lesson.locations.join(', '), lesson.teachers.map((x) => x.name).join(', ')].filter(Boolean).join(' · ')
+  const half = 'grid min-w-0 content-center gap-0.5 px-3 py-2 text-left transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset md:px-2.5 md:py-1.5'
+  return (
+    <div
+      className={cn(
+        'relative flex w-full items-stretch overflow-hidden rounded-xl border border-cantaloupe/60 bg-card md:h-full',
+        isNow && !cancelled && 'ring-2 ring-honeydew/40',
+      )}
+    >
+      <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1.5 bg-cantaloupe" />
+      <span className="flex w-11 shrink-0 flex-col items-center justify-center py-2.5 pl-4 text-center box-content md:w-10 md:pl-3.5">
+        {lesson.period && (
+          <span className={cn('leading-none', cancelled && 'text-muted-foreground')} aria-label={t('period', { n: lesson.period.from })}>
+            <span className="text-xl font-semibold tabular-nums">{t('periodNumber', { n: lesson.period.from })}</span>
+          </span>
+        )}
+        <span className={cn('text-[0.7rem] leading-tight text-muted-foreground tabular-nums', lesson.period && 'mt-1.5')}>
+          {formatTime(lesson.start, locale)}
+          <br />
+          {formatTime(lesson.end, locale)}
+        </span>
+      </span>
+      <span className="grid min-w-0 flex-1 auto-rows-fr">
+        <button type="button" onClick={() => onOpen(lesson)} data-status={lesson.status} className={cn(half, 'hover:bg-muted/50')}>
+          <span className={cn('truncate text-[0.95rem] leading-snug font-medium', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
+            {hyphenate(lesson.title, lang)}
+          </span>
+          {where && <span className={cn('truncate text-xs text-muted-foreground', cancelled && 'line-through')}>{where}</span>}
+          {(lesson.status !== 'scheduled' || lesson.type !== 'lesson' || lesson.online || isNow) && (
+            <span className="mt-0.5 flex min-w-0 flex-wrap gap-1">
+              <Chips lesson={lesson} isNow={isNow && !cancelled} />
+            </span>
+          )}
+        </button>
+        {detentions.map((d) => {
+          const sameTime = d.start === lesson.start && d.end === lesson.end
+          return (
+            <button key={d.id} type="button" onClick={() => onOpen(d)} data-status="detention" className={cn(half, 'border-t border-dashed border-cantaloupe/60 bg-cantaloupe-tint/50 hover:bg-cantaloupe-tint')}>
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Hourglass aria-hidden="true" className="size-3.5 shrink-0 text-cantaloupe-ink" />
+                <span className="truncate text-[0.95rem] leading-snug font-medium">{hyphenate(d.title, lang)}</span>
+              </span>
+              <span className="truncate text-xs text-cantaloupe-ink">
+                {[d.title !== t('detention') && t('detention'), d.locations.join(', '), !sameTime && `${formatTime(d.start, locale)} – ${formatTime(d.end, locale)}`].filter(Boolean).join(' · ')}
+              </span>
+            </button>
+          )
+        })}
+      </span>
+    </div>
+  )
+}
+
 function Row({ icon: Icon, label, value }: { icon: typeof Clock; label: string; value: string }) {
   if (!value) return null
   return (
@@ -246,6 +314,15 @@ function NameEdit({ accountId, kind, code, name }: { accountId: string; kind: 's
 
 export function LessonDrawer({ lesson, accountId, onClose, own }: { lesson: Lesson | null; accountId: string; onClose: () => void; /** The account's own schedule, where homework can go. */ own: boolean }) {
   const { t, locale } = useI18n()
+  const qc = useQueryClient()
+  const remove = useMutation({
+    mutationFn: (id: string) => api.deleteDetention(accountId, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedule', accountId] })
+      toast.success(t('detentionRemoved'))
+      onClose()
+    },
+  })
   // Keep the last lesson around so the sheet can animate out with content.
   const [shown, setShown] = useState(lesson)
   useEffect(() => {
@@ -285,9 +362,15 @@ export function LessonDrawer({ lesson, accountId, onClose, own }: { lesson: Less
                 {t('online')}
               </Button>
             )}
-            {own && l.subjects.length > 0 && <WeekPlan key={`plan-${l.id}`} lesson={l} accountId={accountId} />}
-            {own && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}
-            {l.subjects.length + l.teachers.length > 0 && (
+            {l.type === 'detention' && (
+              <Button variant="outline" className="mt-4 h-11 w-full text-watermelon-ink" disabled={remove.isPending} onClick={() => remove.mutate(l.id)}>
+                <Trash2 />
+                {t('detentionRemove')}
+              </Button>
+            )}
+            {own && l.type !== 'detention' && l.subjects.length > 0 && <WeekPlan key={`plan-${l.id}`} lesson={l} accountId={accountId} />}
+            {own && l.type !== 'detention' && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}
+            {l.type !== 'detention' && l.subjects.length + l.teachers.length > 0 && (
               <div className="mt-4 grid gap-4 border-t pt-4">
                 {l.subjects.map((s) => (
                   <NameEdit key={`s-${s.code}`} accountId={accountId} kind="subject" code={s.code} name={s.name} />

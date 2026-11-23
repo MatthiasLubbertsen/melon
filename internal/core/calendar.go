@@ -95,6 +95,9 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang, base string) (s
 		case "changed":
 			summary = word("Gewijzigd: ", "Changed: ") + summary
 		}
+		if l.Type == "detention" && l.Title != word("Nakomen", "Detention") {
+			summary = word("Nakomen: ", "Detention: ") + summary
+		}
 		if l.ChangeNote != "" {
 			desc = append(desc, l.ChangeNote)
 		}

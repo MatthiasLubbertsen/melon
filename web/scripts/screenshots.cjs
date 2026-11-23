@@ -293,6 +293,40 @@ async function main() {
     await context.close()
   }
 
+  // Detention: drag across periods in the add dialog, then see it share the
+  // card of the lesson in that period (or take a free period whole).
+  for (const theme of ['light', 'dark']) {
+    console.log(`detention, ${theme}`)
+    const { context, page, shot } = await session({ viewport: phone, theme })
+    await page.goto(BASE)
+    await page.getByRole('button', { name: 'Bekijk de demo' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.getByRole('button', { name: 'Nakomen toevoegen' }).click()
+    const dialog = page.getByRole('dialog', { name: 'Nakomen toevoegen' })
+    await dialog.waitFor()
+    const periods = dialog.locator('[data-period]')
+    if ((await periods.count()) < 2) throw new Error('no periods to pick a detention from')
+    const a = await periods.nth(1).boundingBox()
+    const b = await periods.nth(2).boundingBox()
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 4 })
+    await page.mouse.up()
+    if ((await dialog.locator('[data-period][aria-pressed="true"]').count()) !== 2) problems.push('dragging across two periods did not select both')
+    await dialog.getByRole('radio').nth(1).click()
+    await dialog.locator('#detention-location').fill('B014')
+    await dialog.locator('#detention-date').focus()
+    await shot(`23-detention-add-${theme}`)
+    await dialog.getByRole('button', { name: 'Toevoegen' }).click()
+    await dialog.waitFor({ state: 'detached' })
+    await page.locator('[data-status="detention"]:visible').first().waitFor()
+    await page.mouse.move(phone.width / 2, phone.height - 10)
+    await page.waitForFunction(() => !document.querySelector('[data-sonner-toast]'))
+    await page.locator('[data-status="detention"]:visible').first().scrollIntoViewIfNeeded()
+    await shot(`24-detention-schedule-${theme}`)
+    await context.close()
+  }
+
   console.log('desktop')
   const { context, page, shot } = await session({ viewport: desktop, theme: 'light' })
   await page.goto(BASE)
