@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Hourglass } from 'lucide-react'
+import { Hand, Hourglass } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
-import { coveredPeriods } from '@/lib/layoutWeek'
+import { coveredPeriods, detentionSlots } from '@/lib/layoutWeek'
 import { cn } from '@/lib/utils'
 
 const hhmm = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
@@ -16,9 +16,13 @@ const minutes = (v: string) => (/^\d{2}:\d{2}$/.test(v) ? Number(v.slice(0, 2)) 
 
 type Range = { from: number; to: number }
 
+/** Periods picked by dragging over the schedule itself. */
+export type PickedPeriods = Range & { date: string }
+
 /**
- * Adding a detention: pick the periods (tap one, or drag across several) or
- * type the times, then optionally link a subject and say where.
+ * Adding a detention: pick the periods by dragging over the schedule (the
+ * dialog steps aside for it) or type the times, then optionally link a
+ * subject and say where.
  */
 export function DetentionDialog({
   open,
@@ -29,6 +33,9 @@ export function DetentionDialog({
   subjects,
   rooms,
   onAdded,
+  session,
+  picked,
+  onPick,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -41,29 +48,16 @@ export function DetentionDialog({
   /** Rooms from the lessons on screen, offered as suggestions. */
   rooms: string[]
   onAdded: (date: string) => void
+  /** Goes up each time someone starts a new detention, so the form starts empty then and not when it comes back from picking. */
+  session: number
+  /** What was last picked on the schedule. */
+  picked: PickedPeriods | null
+  /** Step aside to pick the periods on the schedule. */
+  onPick: () => void
 }) {
   const { t } = useI18n()
   const qc = useQueryClient()
-  // The periods this week has, plus the ones before and two after it (detention is often after school),
-  // with times guessed from the period next to them.
-  const slots = useMemo(() => {
-    const out = new Map(times)
-    const known = [...times.keys()].sort((a, b) => a - b)
-    if (known.length === 0) return out
-    const first = known[0]
-    const last = known[known.length - 1]
-    for (let p = first - 1; p >= 1; p--) {
-      const next = out.get(p + 1)!
-      out.set(p, { start: next.start - (next.end - next.start), end: next.start })
-    }
-    for (let p = last + 1; p <= last + 2; p++) {
-      const prev = out.get(p - 1)!
-      if (prev.end + (prev.end - prev.start) >= 24 * 60) break
-      out.set(p, { start: prev.end, end: prev.end + (prev.end - prev.start) })
-    }
-    return out
-  }, [times])
-  const periods = useMemo(() => [...slots.keys()].sort((a, b) => a - b), [slots])
+  const slots = useMemo(() => detentionSlots(times), [times])
 
   const [date, setDate] = useState(day)
   const [range, setRange] = useState<Range | null>(null)
@@ -73,9 +67,8 @@ export function DetentionDialog({
   const [note, setNote] = useState('')
   const [location, setLocation] = useState('')
 
-  // Start fresh on the day being looked at every time it opens.
+  // Start fresh on the day being looked at for every new detention.
   useEffect(() => {
-    if (!open) return
     setDate(day)
     setRange(null)
     setStart('')
@@ -83,7 +76,8 @@ export function DetentionDialog({
     setSubject('')
     setNote('')
     setLocation('')
-  }, [open, day])
+    // Not on day: the day changes while picking on the schedule, and that must not empty the form.
+  }, [session]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const pick = (r: Range) => {
     const from = Math.min(r.from, r.to)
@@ -97,17 +91,13 @@ export function DetentionDialog({
     }
   }
 
-  // Click and drag: the period the pointer went down on is the anchor, the one under it now the other end.
-  const drag = useRef<number | null>(null)
+  // Back from the schedule: take the day and the periods dragged over there.
   useEffect(() => {
-    const stop = () => (drag.current = null)
-    window.addEventListener('pointerup', stop)
-    return () => window.removeEventListener('pointerup', stop)
-  }, [])
-  const periodAt = (x: number, y: number) => {
-    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-period]')
-    return el ? Number(el.dataset.period) : null
-  }
+    if (!picked) return
+    setDate(picked.date)
+    pick(picked)
+    // pick only reads slots, which do not change while picking.
+  }, [picked]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Typed times take the periods they overlap, so the card still says which hour it is.
   const typed = (s: string, e: string) => {
@@ -156,54 +146,13 @@ export function DetentionDialog({
             <Input id="detention-date" type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="h-11 text-base" />
           </div>
 
-          {periods.length > 0 && (
-            <div className="grid gap-1.5">
-              <span className="text-sm font-medium" id="detention-periods">
-                {t('detentionPeriods')}
-              </span>
-              <div
-                role="group"
-                aria-labelledby="detention-periods"
-                className="flex touch-none gap-1 select-none"
-                onPointerMove={(e) => {
-                  if (drag.current === null) return
-                  const p = periodAt(e.clientX, e.clientY)
-                  if (p !== null) pick({ from: drag.current, to: p })
-                }}
-              >
-                {periods.map((p) => {
-                  const on = range !== null && p >= range.from && p <= range.to
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      data-period={p}
-                      aria-pressed={on}
-                      onPointerDown={(e) => {
-                        // Let the moves reach the strip, not this one button.
-                        ;(e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId)
-                        drag.current = p
-                        pick({ from: p, to: p })
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault()
-                          pick(e.shiftKey && range ? { from: range.from, to: p } : { from: p, to: p })
-                        }
-                      }}
-                      className={cn(
-                        'flex h-11 min-w-0 flex-1 items-center justify-center rounded-lg border text-sm font-semibold tabular-nums transition-colors focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
-                        on ? 'border-cantaloupe bg-cantaloupe-tint text-cantaloupe-ink' : 'hover:bg-muted',
-                      )}
-                    >
-                      {t('periodNumber', { n: p })}
-                    </button>
-                  )
-                })}
-              </div>
-              <p className="text-xs text-muted-foreground">{t('detentionPeriodsHint')}</p>
-            </div>
-          )}
+          <div className="grid gap-1.5">
+            <Button type="button" variant="outline" className={cn('h-11 justify-start', range && 'border-cantaloupe bg-cantaloupe-tint text-cantaloupe-ink hover:bg-cantaloupe-tint/70')} onClick={onPick}>
+              <Hand />
+              {!range ? t('detentionPickOnSchedule') : range.from === range.to ? t('detentionPickedOne', { n: t('periodNumber', { n: range.from }) }) : t('detentionPicked', { from: t('periodNumber', { n: range.from }), to: t('periodNumber', { n: range.to }) })}
+            </Button>
+            <p className="text-xs text-muted-foreground">{t('detentionPickHint')}</p>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">

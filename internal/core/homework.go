@@ -55,6 +55,19 @@ func (s *Service) toHomework(h store.Homework, withLesson bool) Homework {
 	return out
 }
 
+// homeworkAccount loads an account that keeps homework. A parent's account
+// is a child's schedule seen by the parent: parents have no homework.
+func (s *Service) homeworkAccount(ctx context.Context, p Principal, accountID string) error {
+	a, _, err := s.account(ctx, p, accountID)
+	if err != nil {
+		return err
+	}
+	if a.Role == "parent" {
+		return Errf(http.StatusForbidden, "forbidden", "Parents have no homework in Melon.")
+	}
+	return nil
+}
+
 func cleanHomework(text string) (string, error) {
 	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
 	if text == "" {
@@ -126,7 +139,7 @@ func (s *Service) attachHomework(ctx context.Context, accountID string, out *Sch
 
 // HomeworkList is all homework on an account, by lesson time.
 func (s *Service) HomeworkList(ctx context.Context, p Principal, accountID string) ([]Homework, error) {
-	if _, _, err := s.account(ctx, p, accountID); err != nil {
+	if err := s.homeworkAccount(ctx, p, accountID); err != nil {
 		return nil, err
 	}
 	list, err := s.Store.HomeworkList(ctx, accountID)
@@ -196,6 +209,9 @@ func onLesson(h *store.Homework, l Lesson) {
 // AddHomework puts a piece of homework on a lesson. lesson is the lesson's id
 // or instance, date the day it is on.
 func (s *Service) AddHomework(ctx context.Context, p Principal, accountID, lesson, date, text string) (Homework, error) {
+	if err := s.homeworkAccount(ctx, p, accountID); err != nil {
+		return Homework{}, err
+	}
 	text, err := cleanHomework(text)
 	if err != nil {
 		return Homework{}, err
@@ -223,7 +239,7 @@ type HomeworkChange struct {
 }
 
 func (s *Service) UpdateHomework(ctx context.Context, p Principal, accountID, id string, c HomeworkChange) (Homework, error) {
-	if _, _, err := s.account(ctx, p, accountID); err != nil {
+	if err := s.homeworkAccount(ctx, p, accountID); err != nil {
 		return Homework{}, err
 	}
 	h, err := s.Store.Homework(ctx, accountID, id)
@@ -262,7 +278,7 @@ func (s *Service) UpdateHomework(ctx context.Context, p Principal, accountID, id
 }
 
 func (s *Service) DeleteHomework(ctx context.Context, p Principal, accountID, id string) error {
-	if _, _, err := s.account(ctx, p, accountID); err != nil {
+	if err := s.homeworkAccount(ctx, p, accountID); err != nil {
 		return err
 	}
 	if err := s.Store.DeleteHomework(ctx, accountID, id); errors.Is(err, store.ErrNotFound) {

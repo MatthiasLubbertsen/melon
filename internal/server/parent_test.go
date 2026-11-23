@@ -100,3 +100,27 @@ func TestAdminSeesParentName(t *testing.T) {
 		}
 	}
 }
+
+// Parents have no homework: not on the schedule, and the API refuses it.
+func TestParentHasNoHomework(t *testing.T) {
+	c := setup(t)
+	if code, body := c.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken}); code != 201 {
+		t.Fatalf("link parent: %d %v", code, body)
+	}
+	_, body := c.do("GET", "/api/app/session", "", nil)
+	child := data(t, body)["accounts"].([]any)[0].(map[string]any)["id"].(string)
+	code, body := c.do("GET", "/api/v1/accounts/"+child+"/schedule?week=2026-W46", "", nil)
+	if code != 200 {
+		t.Fatalf("schedule: %d %v", code, body)
+	}
+	l := data(t, body)["lessons"].([]any)[0].(map[string]any)
+	if hw, ok := l["homework"].([]any); !ok || len(hw) != 0 {
+		t.Fatalf("a parent's lesson has homework: %v", l["homework"])
+	}
+	if code, body := c.do("POST", "/api/v1/accounts/"+child+"/homework", "", map[string]any{"lesson": l["id"], "date": l["date"], "text": "Lezen"}); code != 403 {
+		t.Fatalf("parent added homework: %d %v", code, body)
+	}
+	if code, _ := c.do("GET", "/api/v1/accounts/"+child+"/homework", "", nil); code != 403 {
+		t.Fatalf("parent listed homework: %d", code)
+	}
+}

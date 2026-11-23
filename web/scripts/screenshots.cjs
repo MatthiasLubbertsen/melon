@@ -86,7 +86,7 @@ async function main() {
     await shot(`24-homework-lesson-${theme}`)
     await page.keyboard.press('Escape')
     await drawer.waitFor({ state: 'detached' })
-    await page.getByRole('button', { name: /huiswerk zonder les/ }).click()
+    await page.getByRole('button', { name: 'Huiswerk', exact: true }).click()
     await page.getByRole('heading', { name: 'Zonder les' }).waitFor()
     await shot(`25-homework-menu-${theme}`)
     await page.getByRole('button', { name: 'Naar volgende les' }).click()
@@ -293,7 +293,7 @@ async function main() {
     await context.close()
   }
 
-  // Detention: drag across periods in the add dialog, then see it share the
+  // Detention: drag across periods on the schedule from the add dialog, then see it share the
   // card of the lesson in that period (or take a free period whole).
   for (const theme of ['light', 'dark']) {
     console.log(`detention, ${theme}`)
@@ -304,15 +304,23 @@ async function main() {
     await page.getByRole('button', { name: 'Nakomen toevoegen' }).click()
     const dialog = page.getByRole('dialog', { name: 'Nakomen toevoegen' })
     await dialog.waitFor()
-    const periods = dialog.locator('[data-period]')
-    if ((await periods.count()) < 2) throw new Error('no periods to pick a detention from')
-    const a = await periods.nth(1).boundingBox()
-    const b = await periods.nth(2).boundingBox()
+    // The dialog steps aside; the periods are dragged over on the schedule itself.
+    await dialog.getByRole('button', { name: 'Kies de uren op je rooster' }).click()
+    await dialog.waitFor({ state: 'detached' })
+    const bar = page.getByRole('region', { name: 'Nakomen toevoegen' })
+    await bar.waitFor()
+    const cells = page.locator('[data-pick-day]:visible')
+    if ((await cells.count()) < 3) throw new Error('no periods to pick a detention from')
+    const a = await cells.nth(1).boundingBox()
+    const b = await cells.nth(2).boundingBox()
     await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2)
     await page.mouse.down()
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 4 })
     await page.mouse.up()
-    if ((await dialog.locator('[data-period][aria-pressed="true"]').count()) !== 2) problems.push('dragging across two periods did not select both')
+    await shot(`22-detention-pick-${theme}`)
+    await bar.getByRole('button', { name: 'Klaar' }).click()
+    await dialog.waitFor()
+    if (!/t\/m/.test(await dialog.getByRole('button', { name: /uur, kies opnieuw/ }).innerText())) problems.push('dragging across two periods on the schedule did not pick both')
     await dialog.getByRole('radio').nth(1).click()
     await dialog.locator('#detention-location').fill('B014')
     await dialog.locator('#detention-date').focus()

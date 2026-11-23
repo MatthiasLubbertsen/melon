@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, CalendarX, Coffee, Hourglass, Info, Layers, MessageSquareHeart, NotebookPen, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, Hourglass, Info, Layers, ListChecks, MessageSquareHeart, NotebookPen, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'homework-checklists',
+    date: '2026-11-23',
+    icon: ListChecks,
+    nl: 'Huiswerk met een afvinklijstje heeft geen dubbele vinkjes meer.',
+    en: 'Homework with its own checklist no longer shows a second checkbox.',
+  },
   {
     id: 'detentions',
     date: '2026-11-23',

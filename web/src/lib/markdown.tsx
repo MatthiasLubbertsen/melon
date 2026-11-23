@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Checkbox } from '@/components/ui/checkbox'
+import { cn } from '@/lib/utils'
 
 /**
  * A small Markdown renderer for Melon's content pages and for homework people
@@ -72,6 +73,15 @@ export function toggleTask(source: string, n: number): string {
 }
 
 /**
+ * Whether every checklist item in a Markdown source is ticked, or null when
+ * it has none. Homework with its own checklist is done when that is.
+ */
+export function tasksDone(source: string): boolean | null {
+  const marks = [...source.matchAll(/^\s*(?:[-*]|\d+\.)\s+\[([ xX])\]\s/gm)].map((m) => m[1] !== ' ')
+  return marks.length ? marks.every(Boolean) : null
+}
+
+/**
  * Renders Markdown. With onToggleTask, checklist items can be ticked; it gets
  * the item's index for toggleTask. headingIds is off for user text, so its
  * headings cannot clash with ids on the page.
@@ -101,27 +111,37 @@ export function Markdown({ source, onToggleTask, headingIds = true }: { source: 
       i++
     } else if (listItem.test(line)) {
       const ordered = /^\s*\d+\./.test(line)
-      const items: string[] = []
+      const items: { text: string; nested: boolean }[] = []
+      const base = lines[i].match(/^\s*/)![0].length
       while (i < lines.length && listItem.test(lines[i])) {
-        let item = lines[i].replace(/^\s*([-*]|\d+\.)\s+/, '')
+        // An item indented past the first one sits under the item above it.
+        const nested = items.length > 0 && lines[i].match(/^\s*/)![0].length >= base + 2
+        let text = lines[i].replace(/^\s*([-*]|\d+\.)\s+/, '')
         i++
         // Indented lines continue the item.
-        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !listItem.test(lines[i])) item += ' ' + lines[i++].trim()
-        items.push(item)
+        while (i < lines.length && /^\s{2,}\S/.test(lines[i]) && !listItem.test(lines[i])) text += ' ' + lines[i++].trim()
+        items.push({ text, nested })
       }
       const List = ordered ? 'ol' : 'ul'
-      const isTasks = items.every((it) => task.test(it))
+      const isTasks = items.some((it) => task.test(it.text))
       blocks.push(
         <List key={k} data-tasks={isTasks || undefined}>
-          {items.map((it, j) => {
+          {items.map(({ text: it, nested }, j) => {
             const m = it.match(task)
-            if (!m) return <li key={j}>{inline(it, `${k}-${j}`)}</li>
+            if (!m) {
+              return (
+                <li key={j} data-nested={nested || undefined}>
+                  {inline(it, `${k}-${j}`)}
+                </li>
+              )
+            }
             const n = tasks++
             const checked = m[1] !== ' '
             return (
-              <li key={j} data-task={checked ? 'done' : 'open'}>
-                <label className="inline-flex items-start gap-2">
-                  <Checkbox className="mt-1 border-muted-foreground/60" checked={checked} disabled={!onToggleTask} onCheckedChange={() => onToggleTask?.(n)} />
+              <li key={j} data-task={checked ? 'done' : 'open'} data-nested={nested || undefined}>
+                {/* Top-level checklist items get the big checkbox; the ones under them a smaller one. */}
+                <label className={cn('inline-flex items-start', nested ? 'gap-2' : 'gap-3')}>
+                  <Checkbox className={cn('border-muted-foreground/60', nested ? 'mt-1' : 'mt-0.5 size-5')} checked={checked} disabled={!onToggleTask} onCheckedChange={() => onToggleTask?.(n)} />
                   <span data-task-text>{inline(it.slice(m[0].length), `${k}-${j}`)}</span>
                 </label>
               </li>
@@ -148,6 +168,9 @@ export const markdownClass = [
   '[&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold',
   '[&_ul]:grid [&_ul]:list-disc [&_ul]:gap-1 [&_ul]:pl-5 [&_ol]:grid [&_ol]:list-decimal [&_ol]:gap-1 [&_ol]:pl-5',
   '[&_ul[data-tasks]]:list-none [&_ul[data-tasks]]:pl-0 [&_li[data-task=done]_[data-task-text]]:text-muted-foreground [&_li[data-task=done]_[data-task-text]]:line-through',
+  // Items under another item move in; in a checklist, under the big checkbox's text.
+  '[&_li[data-nested]]:ml-5 [&_ul[data-tasks]_li[data-nested]]:ml-8',
+  '[&_ul[data-tasks]_li:not([data-task])]:ml-5 [&_ul[data-tasks]_li:not([data-task])]:list-disc [&_ul[data-tasks]_li[data-nested]:not([data-task])]:ml-12',
   '[&_li]:marker:text-muted-foreground [&_strong]:font-semibold [&_s]:text-muted-foreground',
   '[&_a]:font-medium [&_a]:text-honeydew-ink [&_a]:underline [&_a]:underline-offset-2',
   '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:text-[0.8125rem]',

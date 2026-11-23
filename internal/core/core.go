@@ -802,7 +802,12 @@ func (s *Service) Schedule(ctx context.Context, p Principal, accountID string, q
 		return a.Status != "cancelled" && b.Status == "cancelled"
 	})
 	if q.Person == "" || q.Person == a.ZermeloUser {
-		if err := s.attachHomework(ctx, a.ID, &out, q.From, end); err != nil {
+		// Parents have no homework; their lessons carry an empty list.
+		if a.Role == "parent" {
+			for i := range out.Lessons {
+				out.Lessons[i].Homework = []Homework{}
+			}
+		} else if err := s.attachHomework(ctx, a.ID, &out, q.From, end); err != nil {
 			return Schedule{}, err
 		}
 		if err := s.attachWeekPlans(ctx, a.ID, &out); err != nil {

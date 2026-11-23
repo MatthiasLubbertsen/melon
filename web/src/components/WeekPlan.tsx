@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { api, type Lesson } from '@/lib/api'
 import { isoWeek, weekNumber } from '@/lib/dates'
 import { useI18n } from '@/lib/i18n'
+import { cn, reveal } from '@/lib/utils'
 
 const host = (u: string) => {
   try {
@@ -45,7 +46,7 @@ export function WeekPlan({ lesson, accountId }: { lesson: Lesson; accountId: str
   if (editing) {
     return (
       <form
-        className="mt-4 grid gap-1.5 border-t pt-4"
+        className={cn('mt-4 grid gap-1.5 border-t pt-4', reveal)}
         onSubmit={(e) => {
           e.preventDefault()
           save.mutate(value.trim())
