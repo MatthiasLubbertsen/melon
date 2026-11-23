@@ -86,7 +86,7 @@ async function main() {
     await shot(`24-homework-lesson-${theme}`)
     await page.keyboard.press('Escape')
     await drawer.waitFor({ state: 'detached' })
-    await page.getByRole('button', { name: /huiswerk zonder les/ }).click()
+    await page.getByRole('button', { name: 'Huiswerk', exact: true }).click()
     await page.getByRole('heading', { name: 'Zonder les' }).waitFor()
     await shot(`25-homework-menu-${theme}`)
     await page.getByRole('button', { name: 'Naar volgende les' }).click()

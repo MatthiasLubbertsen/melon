@@ -201,7 +201,8 @@ export function Schedule() {
             <RefreshCw className={cn('size-3.5', busy && 'animate-spin')} />
           </button>
           <span className="flex-1" />
-          {!person && <HomeworkMenu accountId={account.id} onPick={setDay} />}
+          {/* Parents have no homework of their own. */}
+          {!person && account.role !== 'parent' && <HomeworkMenu accountId={account.id} onPick={setDay} />}
           <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t('settings')} render={<Link to="/settings" />}>
             <Settings className="size-5" />
           </Button>
@@ -419,7 +420,7 @@ export function Schedule() {
       </main>
 
       {/* The open lesson follows the schedule, so homework added in the drawer shows up in it. */}
-      <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} onClose={() => setOpenLesson(null)} />
+      <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} homework={account.role !== 'parent'} onClose={() => setOpenLesson(null)} />
       <DetentionDialog open={adding} onOpenChange={setAdding} accountId={account.id} day={day} times={layout.times} subjects={weekSubjects} rooms={weekRooms} onAdded={setDay} />
       <LinkDialog open={relinking} onOpenChange={setRelinking} initialSchool={account.school} />
     </div>

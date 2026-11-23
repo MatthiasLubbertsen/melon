@@ -10,10 +10,16 @@ import { MarkdownEditor } from '@/components/MarkdownEditor'
 import { api, type Homework, type Lesson } from '@/lib/api'
 import { formatDay, formatTime, today } from '@/lib/dates'
 import { useI18n } from '@/lib/i18n'
-import { Markdown, markdownClass, toggleTask } from '@/lib/markdown'
-import { cn } from '@/lib/utils'
+import { Markdown, markdownClass, tasksDone, toggleTask } from '@/lib/markdown'
+import { cn, reveal } from '@/lib/utils'
 
 const MAX = 5000
+
+/** A text change, with done following along when the homework is its own checklist. */
+const withDone = (text: string) => {
+  const done = tasksDone(text)
+  return done === null ? { text } : { text, done }
+}
 
 /** Markdown as one line of plain text, for previews in lists. */
 const plain = (md: string) =>
@@ -67,9 +73,9 @@ function HomeworkItem({ h, accountId, loose }: { h: Homework; accountId: string;
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(h.text)
   if (editing) {
-    const save = () => text.trim() && update.mutate({ id: h.id, text }, { onSuccess: () => setEditing(false) })
+    const save = () => text.trim() && update.mutate({ id: h.id, ...withDone(text) }, { onSuccess: () => setEditing(false) })
     return (
-      <div className="grid gap-2">
+      <div className={cn('grid gap-2', reveal)}>
         <MarkdownEditor value={text} onChange={setText} maxLength={MAX} autoFocus label={t('homeworkEdit')} onSubmit={save} />
         <div className="flex justify-end gap-2">
           <Button variant="ghost" className="h-10" onClick={() => (setText(h.text), setEditing(false))}>
@@ -82,11 +88,13 @@ function HomeworkItem({ h, accountId, loose }: { h: Homework; accountId: string;
       </div>
     )
   }
+  // Homework that is a checklist is done when its items are, so it needs no checkbox of its own.
+  const checklist = tasksDone(h.text) !== null
   return (
     <div data-homework={h.id} className={cn('group/hw flex gap-3 rounded-xl border bg-card px-3 py-2.5', loose && 'border-watermelon/50', h.done && 'bg-muted/40')}>
-      <Checkbox className="mt-0.5 size-5 border-muted-foreground/60" checked={h.done} aria-label={t('homeworkMarkDone')} onCheckedChange={(done) => update.mutate({ id: h.id, done })} />
-      <div className={cn(markdownClass, 'min-w-0 flex-1', h.done && 'text-muted-foreground [&_li]:line-through [&_p]:line-through decoration-muted-foreground/60')}>
-        <Markdown source={h.text} headingIds={false} onToggleTask={(n) => update.mutate({ id: h.id, text: toggleTask(h.text, n) })} />
+      {!checklist && <Checkbox className="mt-0.5 size-5 border-muted-foreground/60" checked={h.done} aria-label={t('homeworkMarkDone')} onCheckedChange={(done) => update.mutate({ id: h.id, done })} />}
+      <div className={cn(markdownClass, 'min-w-0 flex-1', h.done && !checklist && 'text-muted-foreground [&_li]:line-through [&_p]:line-through decoration-muted-foreground/60', h.done && checklist && '[&_p]:text-muted-foreground')}>
+        <Markdown source={h.text} headingIds={false} onToggleTask={(n) => update.mutate({ id: h.id, ...withDone(toggleTask(h.text, n)) })} />
       </div>
       <div className="-my-1 -mr-1.5 flex shrink-0 items-start">
         <Button variant="ghost" size="icon" className="size-9 text-muted-foreground" aria-label={t('homeworkEdit')} onClick={() => setEditing(true)}>
@@ -141,7 +149,7 @@ export function LessonHomework({ lesson, accountId }: { lesson: Lesson; accountI
         <HomeworkItem key={h.id} h={h} accountId={accountId} loose={cancelled && !h.done} />
       ))}
       {writing && (
-        <div className="grid gap-2">
+        <div className={cn('grid gap-2', reveal)}>
           <MarkdownEditor value={text} onChange={setText} maxLength={MAX} autoFocus placeholder={t('homeworkPlaceholder')} label={t('homeworkAdd')} onSubmit={save} />
           <div className="flex justify-end gap-2">
             <Button variant="ghost" className="h-10" onClick={() => (setText(''), setWriting(false))}>
@@ -178,7 +186,7 @@ function LessonLine({ h }: { h: Homework }) {
  * what is coming up.
  */
 export function HomeworkMenu({ accountId, onPick }: { accountId: string; onPick: (date: string) => void }) {
-  const { t, plural } = useI18n()
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const list = useQuery({ queryKey: ['homework', accountId], queryFn: () => api.homework.list(accountId), staleTime: 30_000 })
   const { update } = useHomeworkActions(accountId)
@@ -187,16 +195,10 @@ export function HomeworkMenu({ accountId, onPick }: { accountId: string; onPick:
   const now = today()
   const upcoming = all.filter((h) => !h.done && !isLoose(h) && h.lesson && h.lesson.date >= now)
   const finished = all.filter((h) => h.done)
-  const badge = loose.length || upcoming.length
   return (
     <>
-      <Button variant="ghost" size="icon" className="relative size-11 shrink-0" aria-label={loose.length ? plural('homeworkLoose', loose.length) : t('homework')} onClick={() => setOpen(true)}>
+      <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t('homework')} onClick={() => setOpen(true)}>
         <NotebookPen className="size-5" />
-        {badge > 0 && (
-          <span className={cn('absolute top-1.5 right-1 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[0.65rem] leading-none font-semibold tabular-nums ring-2 ring-background', loose.length ? 'bg-watermelon text-white' : 'bg-honeydew text-honeydew-ink dark:text-background')}>
-            {badge}
-          </span>
-        )}
       </Button>
       <Drawer open={open} onOpenChange={setOpen} showSwipeHandle>
         <DrawerContent className="mx-auto max-w-lg">

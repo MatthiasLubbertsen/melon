@@ -312,7 +312,21 @@ function NameEdit({ accountId, kind, code, name }: { accountId: string; kind: 's
   )
 }
 
-export function LessonDrawer({ lesson, accountId, onClose, own }: { lesson: Lesson | null; accountId: string; onClose: () => void; /** The account's own schedule, where homework can go. */ own: boolean }) {
+export function LessonDrawer({
+  lesson,
+  accountId,
+  onClose,
+  own,
+  homework = true,
+}: {
+  lesson: Lesson | null
+  accountId: string
+  onClose: () => void
+  /** The account's own schedule, where homework can go. */
+  own: boolean
+  /** Whether this account keeps homework at all: a parent does not. */
+  homework?: boolean
+}) {
   const { t, locale } = useI18n()
   const qc = useQueryClient()
   const remove = useMutation({
@@ -369,7 +383,7 @@ export function LessonDrawer({ lesson, accountId, onClose, own }: { lesson: Less
               </Button>
             )}
             {own && l.type !== 'detention' && l.subjects.length > 0 && <WeekPlan key={`plan-${l.id}`} lesson={l} accountId={accountId} />}
-            {own && l.type !== 'detention' && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}
+            {own && homework && l.type !== 'detention' && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}
             {l.type !== 'detention' && l.subjects.length + l.teachers.length > 0 && (
               <div className="mt-4 grid gap-4 border-t pt-4">
                 {l.subjects.map((s) => (
