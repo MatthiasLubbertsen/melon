@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 var weekPattern = regexp.MustCompile(`^\d{4}-W(0[1-9]|[1-4]\d|5[0-3])$`)
@@ -34,8 +35,10 @@ func (s *Service) attachWeekPlans(ctx context.Context, accountID string, out *Sc
 	for i := range out.Lessons {
 		l := &out.Lessons[i]
 		for _, code := range subjectCodes(*l) {
-			if u := plans[code+"|"+isoWeekOf(*l)]; u != "" {
-				l.WeekPlan = u
+			if p, ok := plans[code+"|"+isoWeekOf(*l)]; ok {
+				l.WeekPlan = p.URL
+				t := time.Unix(p.UpdatedAt, 0).In(s.Loc)
+				l.weekPlanUpdated = &t
 				break
 			}
 		}

@@ -108,6 +108,25 @@ async function main() {
     await shot(`28-week-plan-${theme}`)
     await page.keyboard.press('Escape')
     await drawer.waitFor({ state: 'detached' })
+
+    // The calendar feed links every lesson to Melon: that link opens it, even in another week.
+    const target = await page.evaluate(async () => {
+      const session = (await (await fetch('/api/app/session')).json()).data
+      const account = session.accounts.find((a) => a.role === 'student').id
+      const next = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10)
+      const sched = (await (await fetch(`/api/v1/accounts/${account}/schedule?from=${next}&to=${next}`)).json()).data
+      const l = sched.lessons.find((x) => x.status !== 'cancelled') ?? sched.lessons[0]
+      return l && { account, day: l.date, lesson: l.instance, title: l.title }
+    })
+    if (target) {
+      await page.goto(`${BASE}/?account=${target.account}&day=${target.day}&lesson=${target.lesson}`)
+      await drawer.waitFor()
+      await drawer.getByRole('heading', { name: target.title }).waitFor()
+      await page.waitForURL(`${BASE}/`)
+      await shot(`29-lesson-link-${theme}`)
+      await page.keyboard.press('Escape')
+      await drawer.waitFor({ state: 'detached' })
+    }
     await page.keyboard.press('Escape')
     await page.locator('[data-slot="drawer-popup"]').waitFor({ state: 'detached' })
 

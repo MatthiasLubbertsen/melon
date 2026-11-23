@@ -168,6 +168,8 @@ type Lesson struct {
 	// WeekPlan is the link the account saved for this lesson's subject in
 	// this week (an itslearning plan, say). Empty when there is none.
 	WeekPlan string `json:"weekPlan"`
+	// weekPlanUpdated is when WeekPlan was saved, for the calendar feed.
+	weekPlanUpdated *time.Time
 }
 
 type Schedule struct {

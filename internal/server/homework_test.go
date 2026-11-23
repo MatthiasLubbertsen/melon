@@ -2,7 +2,9 @@ package server
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -215,5 +217,73 @@ func TestHomeworkMCP(t *testing.T) {
 	call("delete_homework", map[string]any{"id": id})
 	if list := call("list_homework", map[string]any{})["homework"].([]any); len(list) != 0 {
 		t.Fatalf("still listed: %v", list)
+	}
+}
+
+func TestCalendarFeedHomework(t *testing.T) {
+	c := setup(t)
+	_, body := c.do("POST", "/api/app/demo", "", map[string]any{})
+	student, _ := ids(t, body)
+	_, body = c.do("POST", "/api/app/accounts/"+student+"/calendar", "", map[string]any{})
+	feedURL := body["data"].(map[string]any)["url"].(string)
+	feed := func() string {
+		t.Helper()
+		res, err := http.Get(feedURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return strings.ReplaceAll(string(b), "\r\n ", "") // unfold
+	}
+	event := func(ics, id string) string {
+		t.Helper()
+		for _, ev := range strings.Split(ics, "BEGIN:VEVENT") {
+			if strings.Contains(ev, "-"+id+"@melon") {
+				return ev
+			}
+		}
+		t.Fatalf("no event for lesson %s", id)
+		return ""
+	}
+	_, body = c.do("GET", "/api/v1/accounts/"+student+"/schedule?from=today&to="+time.Now().AddDate(0, 0, 13).Format(time.DateOnly), "", nil)
+	var lesson map[string]any
+	for _, l := range body["data"].(map[string]any)["lessons"].([]any) {
+		if m := l.(map[string]any); m["status"] != "cancelled" && len(m["subjects"].([]any)) > 0 {
+			lesson = m
+			break
+		}
+	}
+	if lesson == nil {
+		t.Skip("no lesson in the next two weeks")
+	}
+	id := lesson["id"].(string)
+	before := event(feed(), id)
+
+	link := c.base + "/?account=" + student + "&day=" + lesson["date"].(string) + "&lesson=" + lesson["instance"].(string)
+	if !strings.Contains(before, "URL:"+link) || !strings.Contains(before, `Openen in Melon: `+link) {
+		t.Fatalf("no link to the lesson in:\n%s", before)
+	}
+
+	_, body = c.do("POST", "/api/v1/accounts/"+student+"/homework", "", map[string]any{"lesson": id, "date": lesson["date"], "text": "- [x] Lees **H3**\n- [ ] Maak [opgave 12](https://example.com/12)"})
+	hw := body["data"].(map[string]any)["id"].(string)
+	after := event(feed(), id)
+	if !strings.Contains(after, `Huiswerk:\n☑ Lees H3\n☐ Maak opgave 12 (https://example.com/12)`) {
+		t.Fatalf("homework not as plain text:\n%s", after)
+	}
+	lastMod := func(ev string) string {
+		for _, l := range strings.Split(ev, "\r\n") {
+			if strings.HasPrefix(l, "LAST-MODIFIED:") {
+				return l
+			}
+		}
+		return ""
+	}
+	if lastMod(after) <= lastMod(before) {
+		t.Fatalf("adding homework did not bump LAST-MODIFIED: %s -> %s", lastMod(before), lastMod(after))
+	}
+	c.do("PATCH", "/api/v1/accounts/"+student+"/homework/"+hw, "", map[string]any{"done": true})
+	if ev := event(feed(), id); !strings.Contains(ev, `✓ Huiswerk (af):`) {
+		t.Fatalf("done homework not marked:\n%s", ev)
 	}
 }

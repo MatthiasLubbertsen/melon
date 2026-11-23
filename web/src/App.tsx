@@ -1,6 +1,6 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from '@/components/ui/sonner'
 import { FeedbackButton } from '@/components/Feedback'
@@ -29,7 +29,12 @@ function Splash() {
 }
 
 function Home() {
-  const { active } = useSession()
+  const { active, accounts, setActive } = useSession()
+  // A link from the calendar feed names the account the lesson belongs to.
+  const wanted = new URLSearchParams(useLocation().search).get('account')
+  useEffect(() => {
+    if (wanted && wanted !== active?.id && accounts.some((a) => a.id === wanted)) setActive(wanted)
+  }, [wanted, active, accounts, setActive])
   return active ? <Schedule key={active.id} /> : <Welcome />
 }
 
