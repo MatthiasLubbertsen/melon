@@ -84,8 +84,8 @@ function HomeworkItem({ h, accountId, loose }: { h: Homework; accountId: string;
   }
   return (
     <div data-homework={h.id} className={cn('group/hw flex gap-3 rounded-xl border bg-card px-3 py-2.5', loose && 'border-watermelon/50', h.done && 'bg-muted/40')}>
-      <Checkbox className="mt-0.5 size-5" checked={h.done} aria-label={t('homeworkMarkDone')} onCheckedChange={(done) => update.mutate({ id: h.id, done })} />
-      <div className={cn(markdownClass, 'min-w-0 flex-1', h.done && 'text-muted-foreground line-through decoration-muted-foreground/60')}>
+      <Checkbox className="mt-0.5 size-5 border-muted-foreground/60" checked={h.done} aria-label={t('homeworkMarkDone')} onCheckedChange={(done) => update.mutate({ id: h.id, done })} />
+      <div className={cn(markdownClass, 'min-w-0 flex-1', h.done && 'text-muted-foreground [&_li]:line-through [&_p]:line-through decoration-muted-foreground/60')}>
         <Markdown source={h.text} headingIds={false} onToggleTask={(n) => update.mutate({ id: h.id, text: toggleTask(h.text, n) })} />
       </div>
       <div className="-my-1 -mr-1.5 flex shrink-0 items-start">

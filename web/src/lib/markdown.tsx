@@ -121,8 +121,8 @@ export function Markdown({ source, onToggleTask, headingIds = true }: { source: 
             return (
               <li key={j} data-task={checked ? 'done' : 'open'}>
                 <label className="inline-flex items-start gap-2">
-                  <Checkbox className="mt-1" checked={checked} disabled={!onToggleTask} onCheckedChange={() => onToggleTask?.(n)} />
-                  <span>{inline(it.slice(m[0].length), `${k}-${j}`)}</span>
+                  <Checkbox className="mt-1 border-muted-foreground/60" checked={checked} disabled={!onToggleTask} onCheckedChange={() => onToggleTask?.(n)} />
+                  <span data-task-text>{inline(it.slice(m[0].length), `${k}-${j}`)}</span>
                 </label>
               </li>
             )
@@ -147,7 +147,7 @@ export const markdownClass = [
   'grid gap-2 text-sm leading-relaxed break-words',
   '[&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:font-semibold',
   '[&_ul]:grid [&_ul]:list-disc [&_ul]:gap-1 [&_ul]:pl-5 [&_ol]:grid [&_ol]:list-decimal [&_ol]:gap-1 [&_ol]:pl-5',
-  '[&_ul[data-tasks]]:list-none [&_ul[data-tasks]]:pl-0 [&_li[data-task=done]>label>span]:text-muted-foreground [&_li[data-task=done]>label>span]:line-through',
+  '[&_ul[data-tasks]]:list-none [&_ul[data-tasks]]:pl-0 [&_li[data-task=done]_[data-task-text]]:text-muted-foreground [&_li[data-task=done]_[data-task-text]]:line-through',
   '[&_li]:marker:text-muted-foreground [&_strong]:font-semibold [&_s]:text-muted-foreground',
   '[&_a]:font-medium [&_a]:text-honeydew-ink [&_a]:underline [&_a]:underline-offset-2',
   '[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:text-[0.8125rem]',

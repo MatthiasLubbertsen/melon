@@ -47,22 +47,26 @@ type mcpTool struct {
 }
 
 type mcpArgs struct {
-	Account     string `json:"account"`
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Week        string `json:"week"`
-	Person      string `json:"person"`
-	ChangesOnly bool   `json:"changes_only"`
-	Language    string `json:"language"`
-	Query       string `json:"query"`
-	Code        string `json:"code"`
-	Name        string `json:"name"`
-	Profile     string `json:"profile"`
-	Limit       int    `json:"limit"`
-	PIN         string `json:"pin"`
-	Lesson      string `json:"lesson"`
-	Date        string `json:"date"`
-	Text        string `json:"text"`
+	Account     string  `json:"account"`
+	From        string  `json:"from"`
+	To          string  `json:"to"`
+	Week        string  `json:"week"`
+	Person      string  `json:"person"`
+	ChangesOnly bool    `json:"changes_only"`
+	Language    string  `json:"language"`
+	Query       string  `json:"query"`
+	Code        string  `json:"code"`
+	Name        string  `json:"name"`
+	Profile     string  `json:"profile"`
+	Limit       int     `json:"limit"`
+	PIN         string  `json:"pin"`
+	Lesson      string  `json:"lesson"`
+	Date        string  `json:"date"`
+	Text        *string `json:"text"`
+	ID          string  `json:"id"`
+	Done        *bool   `json:"done"`
+	MoveTo      string  `json:"move_to"`
+	URL         string  `json:"url"`
 }
 
 func schema(required []string, props map[string]any) map[string]any {

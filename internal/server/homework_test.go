@@ -161,3 +161,59 @@ func TestWeekPlan(t *testing.T) {
 		t.Fatalf("bad week accepted: %d", status)
 	}
 }
+
+func TestHomeworkMCP(t *testing.T) {
+	c := setup(t)
+	_, body := c.do("POST", "/api/app/demo", "", map[string]any{})
+	student, _ := ids(t, body)
+	_, body = c.do("POST", "/api/app/keys", "", map[string]any{"name": "k", "accountIds": []string{student}})
+	key := body["data"].(map[string]any)["key"].(string)
+	call := func(name string, args map[string]any) map[string]any {
+		t.Helper()
+		_, body := c.do("POST", "/mcp", key, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
+		res := body["result"].(map[string]any)
+		if res["isError"] == true {
+			t.Fatalf("%s: %v", name, res)
+		}
+		return res["structuredContent"].(map[string]any)
+	}
+
+	sched := call("get_schedule", map[string]any{"from": "today", "to": time.Now().AddDate(0, 0, 13).Format(time.DateOnly)})
+	var lesson map[string]any
+	for _, l := range sched["schedule"].(map[string]any)["lessons"].([]any) {
+		if m := l.(map[string]any); m["status"] != "cancelled" && len(m["subjects"].([]any)) > 0 {
+			lesson = m
+			break
+		}
+	}
+	if lesson == nil {
+		t.Skip("no lesson in the next two weeks")
+	}
+	code := lesson["subjects"].([]any)[0].(map[string]any)["code"].(string)
+	d, _ := time.Parse(time.DateOnly, lesson["date"].(string))
+	y, w := d.ISOWeek()
+	week := fmt.Sprintf("%04d-W%02d", y, w)
+
+	hw := call("add_homework", map[string]any{"lesson": lesson["id"], "date": lesson["date"], "text": "Lees **H3**"})
+	id := hw["id"].(string)
+	if got := call("update_homework", map[string]any{"id": id, "done": true}); got["done"] != true || got["text"] != "Lees **H3**" {
+		t.Fatalf("update_homework: %v", got)
+	}
+	call("set_week_plan", map[string]any{"code": code, "week": week, "url": "https://jfc.itslearning.com/plans/courses/1/plan/2"})
+
+	sched = call("get_schedule", map[string]any{"from": lesson["date"], "to": lesson["date"]})
+	for _, l := range sched["schedule"].(map[string]any)["lessons"].([]any) {
+		if m := l.(map[string]any); m["id"] == lesson["id"] {
+			if len(m["homework"].([]any)) != 1 || m["weekPlan"] != "https://jfc.itslearning.com/plans/courses/1/plan/2" {
+				t.Fatalf("get_schedule lesson: %v", m)
+			}
+		}
+	}
+	if list := call("list_homework", map[string]any{})["homework"].([]any); len(list) != 1 {
+		t.Fatalf("list_homework: %v", list)
+	}
+	call("delete_homework", map[string]any{"id": id})
+	if list := call("list_homework", map[string]any{})["homework"].([]any); len(list) != 0 {
+		t.Fatalf("still listed: %v", list)
+	}
+}

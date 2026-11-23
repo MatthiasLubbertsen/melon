@@ -94,7 +94,7 @@ func init() {
 	mcpTools = append(mcpTools,
 		mcpTool{
 			Name: "list_homework", Title: "List homework",
-			Description: "List the homework the user wrote on their lessons (Markdown), each with the lesson it is on as Melon last saw it. A lesson status of 'cancelled' or 'gone' means the lesson dropped out and the homework may need a new lesson. Homework also shows on each lesson in get_schedule.",
+			Description: "List the homework the user wrote on their lessons (Markdown), each with the lesson it is on as Melon last saw it. A lesson status of 'cancelled' or 'gone' means the lesson dropped out and the homework may need a new lesson. Homework also shows on each lesson in get_schedule, next to weekPlan (a link saved with set_week_plan).",
 			InputSchema: schema(nil, map[string]any{"account": accountProp}), Annotations: readOnly,
 			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
 				id, err := s.mcpAccount(ctx, p, a.Account)
@@ -120,8 +120,67 @@ func init() {
 				if err != nil {
 					return nil, err
 				}
-				return s.Core.AddHomework(ctx, p, id, a.Lesson, a.Date, a.Text)
+				return s.Core.AddHomework(ctx, p, id, a.Lesson, a.Date, deref(a.Text))
+			},
+		},
+		mcpTool{
+			Name: "update_homework", Title: "Update homework",
+			Description: "Change a piece of homework: its text (Markdown), whether it is done, or the lesson it is on. move_to 'next' puts it on the next lesson of the same subject that still takes place (use it when its lesson dropped out); a lesson id or instance from get_schedule, with date, puts it on that lesson. Leave out what stays the same.",
+			InputSchema: schema([]string{"id"}, map[string]any{
+				"account": accountProp,
+				"id":      str("Homework id from list_homework or get_schedule."),
+				"text":    str("New text, in Markdown."),
+				"done":    map[string]any{"type": "boolean", "description": "Whether the homework is done."},
+				"move_to": str("'next', or a lesson id or instance."),
+				"date":    str("The date of the lesson in move_to, YYYY-MM-DD."),
+			}),
+			Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
+			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
+				id, err := s.mcpAccount(ctx, p, a.Account)
+				if err != nil {
+					return nil, err
+				}
+				return s.Core.UpdateHomework(ctx, p, id, a.ID, core.HomeworkChange{Text: a.Text, Done: a.Done, Move: a.MoveTo, Date: a.Date})
+			},
+		},
+		mcpTool{
+			Name: "delete_homework", Title: "Delete homework",
+			Description: "Delete a piece of homework. This cannot be undone.",
+			InputSchema: schema([]string{"id"}, map[string]any{"account": accountProp, "id": str("Homework id from list_homework or get_schedule.")}),
+			Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": true, "idempotentHint": true, "openWorldHint": false},
+			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
+				id, err := s.mcpAccount(ctx, p, a.Account)
+				if err != nil {
+					return nil, err
+				}
+				return map[string]any{"id": a.ID, "deleted": true}, s.Core.DeleteHomework(ctx, p, id, a.ID)
+			},
+		},
+		mcpTool{
+			Name: "set_week_plan", Title: "Set a week plan link",
+			Description: "Save a link (an itslearning week plan, say) for one subject in one ISO week. It shows as weekPlan on every lesson of that subject that week in get_schedule. Pass an empty url to remove it. Melon does not open the link.",
+			InputSchema: schema([]string{"code", "week", "url"}, map[string]any{
+				"account": accountProp,
+				"code":    str("Subject code, e.g. 'du'."),
+				"week":    str("ISO week, e.g. 2026-W48."),
+				"url":     str("https:// link, or empty to remove."),
+			}),
+			Annotations: map[string]any{"readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
+			run: func(ctx context.Context, s *Server, p core.Principal, a mcpArgs) (any, error) {
+				id, err := s.mcpAccount(ctx, p, a.Account)
+				if err != nil {
+					return nil, err
+				}
+				u, err := s.Core.SetWeekPlan(ctx, p, id, a.Code, a.Week, a.URL)
+				return map[string]any{"code": strings.ToLower(a.Code), "week": strings.ToUpper(a.Week), "url": u}, err
 			},
 		},
 	)
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
