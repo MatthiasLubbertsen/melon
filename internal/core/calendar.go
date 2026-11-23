@@ -110,6 +110,9 @@ func (s *Service) CalendarFeed(ctx context.Context, token, lang string) (string,
 		if l.Period != nil {
 			desc = append(desc, fmt.Sprintf(word("%de uur", "Period %d"), l.Period.From))
 		}
+		for _, h := range l.Homework {
+			desc = append(desc, word("Huiswerk: ", "Homework: ")+h.Text)
+		}
 		modified := sched.FetchedAt
 		if l.UpdatedAt != nil {
 			modified = *l.UpdatedAt

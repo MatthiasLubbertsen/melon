@@ -60,6 +60,9 @@ type mcpArgs struct {
 	Profile     string `json:"profile"`
 	Limit       int    `json:"limit"`
 	PIN         string `json:"pin"`
+	Lesson      string `json:"lesson"`
+	Date        string `json:"date"`
+	Text        string `json:"text"`
 }
 
 func schema(required []string, props map[string]any) map[string]any {
