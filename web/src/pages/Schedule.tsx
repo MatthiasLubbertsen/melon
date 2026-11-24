@@ -14,12 +14,13 @@ import { detentionSlots, isDetention, layoutWeek, lineOf, spanOf } from '@/lib/l
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
 import { PeopleSearch } from '@/components/PeopleSearch'
-import { api, type Lesson, type Person } from '@/lib/api'
+import { api, type Detention, type Lesson, type Person } from '@/lib/api'
 import { addDays, defaultDay, formatDay, formatTime, isoWeek, monday, today, weekNumber } from '@/lib/dates'
 import { useNow, usePullToRefresh } from '@/lib/hooks'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 /** Puts a cell on the desktop week grid at the column and lines its CSS variables name. */
 const place = 'md:[grid-column:var(--c)] md:[grid-row:var(--r)/span_var(--s)] md:pb-3'
@@ -85,6 +86,8 @@ export function Schedule() {
   const [detentionSession, setDetentionSession] = useState(0)
   const [picked, setPicked] = useState<PickedPeriods | null>(null)
   const [draft, setDraft] = useState<PickedPeriods | null>(null)
+  // The detention being changed, with its lesson for the subject name; null when adding.
+  const [editing, setEditing] = useState<{ detention: Detention; lesson: Lesson } | null>(null)
   const picking = adding === 'picking'
   const now = useNow(15_000)
 
@@ -179,6 +182,30 @@ export function Schedule() {
     for (const l of lessons) if (!isDetention(l)) for (const s of l.subjects) if (!seen.has(s.code.toLowerCase())) seen.set(s.code.toLowerCase(), s.name)
     return [...seen].map(([code, name]) => ({ code, name })).sort((a, b) => a.name.localeCompare(b.name, locale))
   }, [lessons, locale])
+  // Changing a detention: load it as stored (the lesson only shows what it turned into), then open the form.
+  const editDetention = useCallback(
+    async (l: Lesson) => {
+      try {
+        const list = await api.detentions(account.id, { from: l.date, to: l.date })
+        const d = list.find((x) => x.id === l.id)
+        if (!d) throw new Error('missing')
+        setEditing({ detention: d, lesson: l })
+        setOpenLesson(null)
+        setPicked(null)
+        setDetentionSession((n) => n + 1)
+        setAdding('form')
+      } catch {
+        toast.error(t('detentionLoadFailed'))
+      }
+    },
+    [account.id, t],
+  )
+  // A detention's own subject stays pickable even when it is not on this week's schedule.
+  const editSubjects = useMemo(() => {
+    const own = editing?.lesson.subjects[0]
+    if (!own || weekSubjects.some((s) => s.code === own.code.toLowerCase())) return weekSubjects
+    return [...weekSubjects, { code: own.code.toLowerCase(), name: own.name }]
+  }, [editing, weekSubjects])
   // Picking a detention's periods, within one day. With a mouse: press and drag. On a touch screen the
   // page has to keep scrolling and swiping to other days, so a tap picks a period (a second tap stretches
   // it to there) and a long press starts a drag, like moving an event in a calendar app.
@@ -277,7 +304,6 @@ export function Schedule() {
           className: cn('relative cursor-pointer select-none [-webkit-touch-callout:none] [&_*]:pointer-events-none', draft && draft.date === date && from <= draft.to && to >= draft.from && 'after:absolute after:inset-0 after:rounded-xl after:bg-cantaloupe/25 after:ring-2 after:ring-cantaloupe md:after:bottom-3'),
         }
       : { className: '' }
-  const weekRooms = useMemo(() => [...new Set(lessons.flatMap((l) => l.locations))].sort((a, b) => a.localeCompare(b, locale, { numeric: true })), [lessons, locale])
   const lessonGroup = (g: Lesson[]) =>
     g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
@@ -332,7 +358,7 @@ export function Schedule() {
           )}
           {/* Detentions belong to your own schedule, not to someone you look up. */}
           {!person && (
-            <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => (setDetentionSession((n) => n + 1), setPicked(null), setAdding('form'))}>
+            <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => (setEditing(null), setDetentionSession((n) => n + 1), setPicked(null), setAdding('form'))}>
               <Plus />
             </Button>
           )}
@@ -541,19 +567,19 @@ export function Schedule() {
       </main>
 
       {/* The open lesson follows the schedule, so homework added in the drawer shows up in it. */}
-      <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} homework={account.role !== 'parent'} onClose={() => setOpenLesson(null)} />
+      <LessonDrawer lesson={openLesson && (lessons.find((l) => l.id === openLesson.id) ?? openLesson)} accountId={account.id} own={!person} homework={account.role !== 'parent'} onClose={() => setOpenLesson(null)} onEditDetention={editDetention} />
       <DetentionDialog
         open={adding === 'form'}
         onOpenChange={(o) => setAdding(o ? 'form' : 'no')}
         accountId={account.id}
         day={day}
         times={layout.times}
-        subjects={weekSubjects}
-        rooms={weekRooms}
+        subjects={editSubjects}
         onAdded={setDay}
         session={detentionSession}
         picked={picked}
         onPick={() => (setDraft(null), setAdding('picking'))}
+        editing={editing?.detention ?? null}
       />
       {picking && (
         <div role="region" aria-label={t('addDetention')} className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-lg backdrop-blur animate-in fade-in-0 slide-in-from-bottom-2 motion-reduce:animate-none">

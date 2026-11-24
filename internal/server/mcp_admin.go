@@ -19,10 +19,10 @@ var adminReadOnly = map[string]any{"readOnlyHint": true, "openWorldHint": false}
 var adminTools = []mcpTool{
 	{
 		Name: "admin_overview", Title: "Admin: overview",
-		Description: "Melon-wide numbers: profiles, active users (1/7/30 days), accounts per role, PINs (and locked ones), API keys, MCP apps, calendar feeds, lessons served in total and per day and channel for the last 30 days (channels: session = web app, api_key, oauth = MCP apps, calendar, admin), and accounts per school.",
+		Description: "Melon-wide numbers: profiles, active users (1/7/30 days), accounts per role, PINs (and locked ones), API keys, MCP apps, calendar feeds, lessons served in total and per day and channel for the last 30 days (channels: session = web app, api_key, oauth = MCP apps, calendar, admin), accounts, homework and detentions per school, and `planner`: homework (done, overdue, checklists, gone from Zermelo) and detention totals (upcoming, minutes, per weekday Monday first), the subjects with the most homework and detentions, and how many of each were added per day for the last 30 days.",
 		InputSchema: schema(nil, map[string]any{}), Annotations: adminReadOnly,
 		run: func(ctx context.Context, s *Server, _ core.Principal, _ mcpArgs) (any, error) {
-			return s.overview(ctx)
+			return s.overview(ctx, "nl")
 		},
 	},
 	{

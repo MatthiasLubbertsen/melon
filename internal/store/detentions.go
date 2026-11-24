@@ -60,3 +60,9 @@ func (s *Store) AddDetention(ctx context.Context, d Detention) error {
 func (s *Store) DeleteDetention(ctx context.Context, accountID, id string) error {
 	return affected(s.db.ExecContext(ctx, `DELETE FROM detentions WHERE account_id = ? AND id = ?`, accountID, id))
 }
+
+// UpdateDetention changes everything about a detention but its id, account and creation time.
+func (s *Store) UpdateDetention(ctx context.Context, d Detention) error {
+	return affected(s.db.ExecContext(ctx, `UPDATE detentions SET date = ?, start = ?, end = ?, period_from = ?, period_to = ?, subject = ?, title = ?, location = ?
+		WHERE account_id = ? AND id = ?`, d.Date, d.Start, d.End, d.PeriodFrom, d.PeriodTo, d.Subject, d.Title, d.Location, d.AccountID, d.ID))
+}

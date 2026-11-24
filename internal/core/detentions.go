@@ -62,15 +62,12 @@ func (s *Service) Detentions(ctx context.Context, p Principal, accountID string,
 	return out, nil
 }
 
-func (s *Service) AddDetention(ctx context.Context, p Principal, accountID string, in DetentionInput) (Detention, error) {
-	a, _, err := s.account(ctx, p, accountID)
-	if err != nil {
-		return Detention{}, err
+// checkDetention validates input and turns it into a row, without id or account.
+func checkDetention(in DetentionInput, loc *time.Location) (store.Detention, error) {
+	bad := func(msg string) (store.Detention, error) {
+		return store.Detention{}, Errf(http.StatusBadRequest, "invalid_request", "%s", msg)
 	}
-	bad := func(msg string) (Detention, error) {
-		return Detention{}, Errf(http.StatusBadRequest, "invalid_request", "%s", msg)
-	}
-	if _, err := time.ParseInLocation(time.DateOnly, in.Date, s.Loc); err != nil {
+	if _, err := time.ParseInLocation(time.DateOnly, in.Date, loc); err != nil {
 		return bad("'date' must be a date like 2026-11-12.")
 	}
 	start, err1 := time.Parse("15:04", in.Start)
@@ -82,7 +79,7 @@ func (s *Service) AddDetention(ctx context.Context, p Principal, accountID strin
 		return bad("'end' must be after 'start'.")
 	}
 	d := store.Detention{
-		ID: secret.ID("det"), AccountID: a.ID, Date: in.Date, Start: start.Format("15:04"), End: end.Format("15:04"),
+		Date: in.Date, Start: start.Format("15:04"), End: end.Format("15:04"),
 		Subject:  strings.ToLower(strings.TrimSpace(in.Subject)),
 		Title:    strings.TrimSpace(in.Title),
 		Location: strings.TrimSpace(in.Location),
@@ -96,7 +93,41 @@ func (s *Service) AddDetention(ctx context.Context, p Principal, accountID strin
 	if len(d.Subject) > 32 || len([]rune(d.Title)) > 80 || len([]rune(d.Location)) > 40 {
 		return bad("'subject' can be at most 32 characters, 'title' 80 and 'location' 40.")
 	}
+	return d, nil
+}
+
+func (s *Service) AddDetention(ctx context.Context, p Principal, accountID string, in DetentionInput) (Detention, error) {
+	a, _, err := s.account(ctx, p, accountID)
+	if err != nil {
+		return Detention{}, err
+	}
+	d, err := checkDetention(in, s.Loc)
+	if err != nil {
+		return Detention{}, err
+	}
+	d.ID, d.AccountID = secret.ID("det"), a.ID
 	if err := s.Store.AddDetention(ctx, d); err != nil {
+		return Detention{}, err
+	}
+	return toDetention(d), nil
+}
+
+// UpdateDetention replaces a detention with new input: fields left out are cleared, like on adding.
+func (s *Service) UpdateDetention(ctx context.Context, p Principal, accountID, id string, in DetentionInput) (Detention, error) {
+	a, _, err := s.account(ctx, p, accountID)
+	if err != nil {
+		return Detention{}, err
+	}
+	d, err := checkDetention(in, s.Loc)
+	if err != nil {
+		return Detention{}, err
+	}
+	d.ID, d.AccountID = id, a.ID
+	err = s.Store.UpdateDetention(ctx, d)
+	if errors.Is(err, store.ErrNotFound) {
+		return Detention{}, ErrNotFound
+	}
+	if err != nil {
 		return Detention{}, err
 	}
 	return toDetention(d), nil

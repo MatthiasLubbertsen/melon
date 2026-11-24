@@ -2,8 +2,10 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/matthiaslubbertsen/melon/internal/zermelo"
 )
@@ -68,6 +70,10 @@ func TestAdmin(t *testing.T) {
 		t.Fatalf("API key reached the admin API: %d", code)
 	}
 
+	// Detentions show up in the planner numbers, without their text.
+	today := time.Now().Format(time.DateOnly)
+	user.do("POST", "/api/v1/accounts/"+student+"/detentions", "", map[string]any{"date": today, "start": "15:30", "end": "17:00", "subject": "wi", "title": "geheim"})
+
 	// Usage is counted per channel.
 	user.do("GET", "/api/v1/accounts/"+student+"/schedule?week=2026-W46", "", nil)
 	user.do("GET", "/api/v1/accounts/"+student+"/schedule?week=2026-W46", key, nil)
@@ -78,6 +84,19 @@ func TestAdmin(t *testing.T) {
 	ov := data(t, body)
 	if st := ov["stats"].(map[string]any); st["profiles"] != 2.0 || st["accounts"] != 3.0 || st["apiKeys"] != 2.0 {
 		t.Fatalf("stats: %v", st)
+	}
+	pl := ov["planner"].(map[string]any)
+	if st := pl["stats"].(map[string]any); st["detentions"] != 1.0 || st["detentionMinutes"] != 90.0 || st["detentionsUpcoming"] != 1.0 || st["detentionAccounts"] != 1.0 {
+		t.Fatalf("planner stats: %v", st)
+	}
+	if subs := pl["subjects"].([]any); len(subs) != 1 || subs[0].(map[string]any)["code"] != "wi" || subs[0].(map[string]any)["detentions"] != 1.0 {
+		t.Fatalf("planner subjects: %v", subs)
+	}
+	if days := pl["days"].([]any); len(days) != 30 || days[29].(map[string]any)["detentions"] != 1.0 {
+		t.Fatalf("planner days: %v", days)
+	}
+	if strings.Contains(fmt.Sprint(ov), "geheim") {
+		t.Fatal("the overview shows what a detention says")
 	}
 	channels := map[string]bool{}
 	for _, u := range ov["usage"].([]any) {

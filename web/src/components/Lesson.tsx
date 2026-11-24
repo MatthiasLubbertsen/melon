@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, Hourglass, MapPin, NotebookPen, Trash2, User, Users, Video } from 'lucide-react'
+import { ArrowRightLeft, Ban, ChevronDown, Clock, DoorOpen, FileText, GraduationCap, Hourglass, MapPin, NotebookPen, Pencil, Trash2, User, Users, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -318,6 +318,7 @@ export function LessonDrawer({
   onClose,
   own,
   homework = true,
+  onEditDetention,
 }: {
   lesson: Lesson | null
   accountId: string
@@ -326,6 +327,8 @@ export function LessonDrawer({
   own: boolean
   /** Whether this account keeps homework at all: a parent does not. */
   homework?: boolean
+  /** Opens the detention form to change this detention. */
+  onEditDetention?: (lesson: Lesson) => void
 }) {
   const { t, locale } = useI18n()
   const qc = useQueryClient()
@@ -377,10 +380,16 @@ export function LessonDrawer({
               </Button>
             )}
             {l.type === 'detention' && (
-              <Button variant="outline" className="mt-4 h-11 w-full text-watermelon-ink" disabled={remove.isPending} onClick={() => remove.mutate(l.id)}>
-                <Trash2 />
-                {t('detentionRemove')}
-              </Button>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <Button variant="outline" className="h-11" disabled={!onEditDetention} onClick={() => onEditDetention?.(l)}>
+                  <Pencil />
+                  {t('detentionEdit')}
+                </Button>
+                <Button variant="outline" className="h-11 text-watermelon-ink" disabled={remove.isPending} onClick={() => remove.mutate(l.id)}>
+                  <Trash2 />
+                  {t('detentionRemoveShort')}
+                </Button>
+              </div>
             )}
             {own && l.type !== 'detention' && l.subjects.length > 0 && <WeekPlan key={`plan-${l.id}`} lesson={l} accountId={accountId} />}
             {own && homework && l.type !== 'detention' && <LessonHomework key={l.id} lesson={l} accountId={accountId} />}

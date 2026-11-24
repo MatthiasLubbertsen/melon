@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, Banner, Chip, ConfirmDialog, CopyField } from '@/components/bits'
 import { KindChip, ThreadRow, ThreadView } from '@/components/Feedback'
 import { PinInput } from '@/components/SignInForm'
-import { api, type AdminAccount, type AdminOverview, type AdminProfile, type AdminSubject, type FeedbackSummary, type FeedbackThread, type Suggestion, type UsageChannel } from '@/lib/api'
+import { api, type AdminAccount, type AdminOverview, type Planner, type AdminProfile, type AdminSubject, type FeedbackSummary, type FeedbackThread, type Suggestion, type UsageChannel } from '@/lib/api'
 import { useDebounced } from '@/lib/hooks'
 import { useI18n, type Key } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -41,12 +41,15 @@ function useFormat() {
     const day = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })
     const dayLong = new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' })
     const when = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    const wd = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' })
     return {
       n: (v: number) => num.format(v),
       day: (iso: string) => day.format(new Date(iso)),
       // "YYYY-MM-DD" is a calendar day, not an instant: read it at noon so no timezone moves it.
       dayOnly: (d: string) => dayLong.format(new Date(`${d}T12:00:00`)),
       when: (iso: string) => when.format(new Date(iso)),
+      // 0 is Monday. 2024-01-01 was a Monday.
+      weekday: (i: number) => wd.format(new Date(Date.UTC(2024, 0, 1 + i, 12))),
     }
   }, [locale])
 }
@@ -157,10 +160,153 @@ function Channels({ data }: { data: AdminOverview }) {
   )
 }
 
-function OverviewTab() {
+const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0)
+
+/** Homework and detentions added per day, stacked. Hovering or focusing a day shows its numbers above. */
+function PlannerChart({ planner }: { planner: Planner }) {
   const { t } = useI18n()
   const f = useFormat()
-  const q = useQuery({ queryKey: ['admin', 'overview'], queryFn: api.admin.overview, refetchInterval: 60_000 })
+  const series = planner.days
+  const [hover, setHover] = useState<number | null>(null)
+  const max = Math.max(1, ...series.map((s) => s.homework + s.detentions))
+  const shown = series[hover ?? series.length - 1]
+  return (
+    <div className="grid gap-2">
+      <p className="flex flex-wrap items-baseline gap-x-2 text-sm" aria-live="polite">
+        <span className="font-medium first-letter:uppercase">{f.dayOnly(shown.day)}</span>
+        <span className="text-muted-foreground">{t('plannerTip', { homework: f.n(shown.homework), detentions: f.n(shown.detentions) })}</span>
+      </p>
+      <div className="relative" onMouseLeave={() => setHover(null)}>
+        <div className="pointer-events-none absolute inset-x-0 top-0 border-t border-dashed border-border" />
+        <span className="pointer-events-none absolute top-0 right-0 -translate-y-full pb-0.5 text-[11px] text-muted-foreground tabular-nums">{f.n(max)}</span>
+        <div className="flex h-28 items-end gap-0.5 border-b border-border" aria-hidden="true">
+          {series.map((s, i) => (
+            <div key={s.day} className={cn('flex h-full min-w-0 flex-1 flex-col justify-end transition-opacity', hover !== null && hover !== i && 'opacity-50')} onMouseEnter={() => setHover(i)}>
+              <div className="w-full rounded-t-[4px] bg-cantaloupe" style={{ height: s.detentions ? `max(2px, ${(s.detentions / max) * 100}%)` : 0 }} />
+              <div className={cn('w-full bg-honeydew', !s.detentions && 'rounded-t-[4px]')} style={{ height: s.homework ? `max(2px, ${(s.homework / max) * 100}%)` : 0 }} />
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 flex justify-between text-[11px] text-muted-foreground">
+          <span>{f.day(`${series[0].day}T12:00:00`)}</span>
+          <span>{f.day(`${series[series.length - 1].day}T12:00:00`)}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground" aria-hidden="true">
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-honeydew" />
+          {t('plannerHomework')}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-sm bg-cantaloupe" />
+          {t('plannerDetentions')}
+        </span>
+      </div>
+      <table className="sr-only">
+        <caption>{t('plannerTable')}</caption>
+        <thead>
+          <tr>
+            <th>{t('colDay')}</th>
+            <th>{t('plannerHomework')}</th>
+            <th>{t('plannerDetentions')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {series.map((s) => (
+            <tr key={s.day}>
+              <td>{s.day}</td>
+              <td>{s.homework}</td>
+              <td>{s.detentions}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** What people do with homework and detentions: totals, a chart, weekdays and subjects. */
+function PlannerSection({ planner }: { planner: Planner }) {
+  const { t } = useI18n()
+  const f = useFormat()
+  const p = planner.stats
+  const weekdays = [0, 1, 2, 3, 4, 5, 6].map((i) => f.weekday(i))
+  const wdMax = Math.max(1, ...p.detentionsByWeekday)
+  // Weekends only show when someone actually has detention then.
+  const shownDays = p.detentionsByWeekday.map((n, i) => ({ n, i })).filter(({ n, i }) => i < 5 || n > 0)
+  return (
+    <Section title={t('plannerTitle')} text={t('plannerText')}>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Stat label={t('plannerHomework')} value={f.n(p.homework)} sub={t('plannerHomeworkSub', { done: pct(p.homeworkDone, p.homework), overdue: f.n(p.homeworkOverdue) })} />
+        <Stat label={t('plannerDetentions')} value={f.n(p.detentions)} sub={t('plannerDetentionsSub', { upcoming: f.n(p.detentionsUpcoming), hours: f.n(Math.round(p.detentionMinutes / 6) / 10) })} />
+        <Stat label={t('plannerNew')} value={f.n(p.homeworkNew7d + p.detentionsNew7d)} sub={t('plannerNewSub', { homework: f.n(p.homeworkNew7d), detentions: f.n(p.detentionsNew7d) })} />
+        <Stat label={t('plannerPeople')} value={f.n(p.homeworkAccounts)} sub={t('plannerPeopleSub', { detentions: f.n(p.detentionAccounts), plans: f.n(p.weekPlans) })} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {t('plannerExtra', { checklists: f.n(p.homeworkChecklists), gone: f.n(p.homeworkGone) })}
+        {p.detentions > 0 && ` · ${t('plannerAverage', { min: f.n(Math.round(p.detentionMinutes / p.detentions)) })}`}
+      </p>
+      <PlannerChart planner={planner} />
+      <div className="grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+        <div className="grid content-start gap-2">
+          <h3 className="text-sm font-medium">{t('plannerWeekdays')}</h3>
+          {p.detentions === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('plannerNoDetentions')}</p>
+          ) : (
+            <dl className="grid gap-1.5">
+              {shownDays.map(({ n, i }) => (
+                <div key={i} className="grid grid-cols-[2.5rem_minmax(0,1fr)_2rem] items-center gap-2 text-sm">
+                  <dt className="text-muted-foreground first-letter:uppercase">{weekdays[i]}</dt>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                    <div className="h-full rounded-full bg-cantaloupe" style={{ width: `${(n / wdMax) * 100}%` }} />
+                  </div>
+                  <dd className="text-right tabular-nums">{f.n(n)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
+        </div>
+        <div className="grid content-start gap-2">
+          <h3 className="text-sm font-medium">{t('plannerSubjects')}</h3>
+          {planner.subjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t('plannerNoSubjects')}</p>
+          ) : (
+            <div className="-mx-1 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="text-left text-muted-foreground">
+                  <tr>
+                    <th className="px-1 py-1.5 font-medium">{t('plannerSubject')}</th>
+                    <th className="px-1 py-1.5 text-right font-medium">{t('plannerHomework')}</th>
+                    <th className="px-1 py-1.5 text-right font-medium">{t('plannerDone')}</th>
+                    <th className="px-1 py-1.5 text-right font-medium">{t('plannerDetentions')}</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {planner.subjects.map((s) => (
+                    <tr key={s.code || '-'} className="border-t">
+                      <td className="max-w-40 truncate px-1 py-2 font-medium" title={s.code ? s.code.toUpperCase() : undefined}>
+                        {s.code ? s.name : <span className="text-muted-foreground">{t('plannerNoSubject')}</span>}
+                      </td>
+                      <td className="px-1 py-2 text-right">{f.n(s.homework)}</td>
+                      <td className="px-1 py-2 text-right">{s.homework ? `${pct(s.homeworkDone, s.homework)}%` : '–'}</td>
+                      <td className="px-1 py-2 text-right">{f.n(s.detentions)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">{t('plannerSubjectsNote')}</p>
+        </div>
+      </div>
+    </Section>
+  )
+}
+
+function OverviewTab() {
+  const { t, lang } = useI18n()
+  const f = useFormat()
+  const q = useQuery({ queryKey: ['admin', 'overview', lang], queryFn: () => api.admin.overview(lang), refetchInterval: 60_000 })
   if (!q.data) return <div className="grid grid-cols-2 gap-2 md:grid-cols-3">{[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-24 rounded-xl" />)}</div>
   const { stats: s, totals, schools } = q.data
   return (
@@ -175,6 +321,7 @@ function OverviewTab() {
       </div>
       <UsageChart data={q.data} />
       <Channels data={q.data} />
+      <PlannerSection planner={q.data.planner} />
       <Section title={`${t('schoolsTitle')} (${f.n(s.schools)})`}>
         {schools.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('noSchools')}</p>
@@ -188,6 +335,8 @@ function OverviewTab() {
                   <th className="px-1 py-1.5 text-right font-medium">{t('colAccounts')}</th>
                   <th className="px-1 py-1.5 text-right font-medium max-sm:hidden">{t('colStudents')}</th>
                   <th className="px-1 py-1.5 text-right font-medium max-sm:hidden">{t('colStaff')}</th>
+                  <th className="px-1 py-1.5 text-right font-medium max-md:hidden">{t('plannerHomework')}</th>
+                  <th className="px-1 py-1.5 text-right font-medium max-md:hidden">{t('plannerDetentions')}</th>
                 </tr>
               </thead>
               <tbody className="tabular-nums">
@@ -198,6 +347,8 @@ function OverviewTab() {
                     <td className="px-1 py-2 text-right">{f.n(sc.accounts)}</td>
                     <td className="px-1 py-2 text-right max-sm:hidden">{f.n(sc.students)}</td>
                     <td className="px-1 py-2 text-right max-sm:hidden">{f.n(sc.staff)}</td>
+                    <td className="px-1 py-2 text-right max-md:hidden">{f.n(sc.homework)}</td>
+                    <td className="px-1 py-2 text-right max-md:hidden">{f.n(sc.detentions)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -797,7 +948,7 @@ function TeacherRow({ school, code, name }: { school: string; code: string; name
 function SchoolTeachersSection() {
   const { t, error } = useI18n()
   const qc = useQueryClient()
-  const overview = useQuery({ queryKey: ['admin', 'overview'], queryFn: api.admin.overview })
+  const overview = useQuery({ queryKey: ['admin', 'overview'], queryFn: () => api.admin.overview() })
   const schools = overview.data?.schools.map((s) => s.school) ?? []
   const [picked, setPicked] = useState<string | null>(null)
   const school = picked ?? schools[0] ?? ''
@@ -964,7 +1115,7 @@ export default function Admin() {
   const { t } = useI18n()
   const { session } = useSession()
   const [tab, setTab] = useState('overview')
-  const overview = useQuery({ queryKey: ['admin', 'overview'], queryFn: api.admin.overview, enabled: session.admin })
+  const overview = useQuery({ queryKey: ['admin', 'overview'], queryFn: () => api.admin.overview(), enabled: session.admin })
   const unread = overview.data?.unreadFeedback ?? 0
   if (!session.admin) return null
   return (
