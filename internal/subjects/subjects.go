@@ -133,7 +133,34 @@ func Lookup(code string, global map[string]Name) (Name, bool) {
 			return d, true
 		}
 	}
+	// "tts" in front makes it the test of a subject: "ttsmu" is "Toets muziek".
+	if rest, ok := strings.CutPrefix(key, testPrefix); ok && rest != "" {
+		if n, ok := Lookup(rest, global); ok {
+			out := Name{NL: "Toets " + lowerFirst(n.NL)}
+			if n.EN != "" {
+				out.EN = n.EN + " test"
+			}
+			return out, true
+		}
+	}
 	return Name{}, false
+}
+
+const testPrefix = "tts"
+
+// languages keep their capital in Dutch, also mid-sentence: "Toets Engels".
+var languages = map[string]bool{
+	"Arabisch": true, "Chinees": true, "Duits": true, "Engels": true, "Frans": true, "Fries": true, "Grieks": true,
+	"Italiaans": true, "Japans": true, "Latijn": true, "Nederlands": true, "Pools": true, "Portugees": true,
+	"Russisch": true, "Spaans": true, "Turks": true,
+}
+
+func lowerFirst(name string) string {
+	first, _, _ := strings.Cut(name, " ")
+	if name == "" || languages[first] || strings.ToUpper(first) == first {
+		return name
+	}
+	return strings.ToLower(name[:1]) + name[1:]
 }
 
 // Resolve finds the readable name for a code: the user's override first, then

@@ -31,7 +31,6 @@ export function DetentionDialog({
   day,
   times,
   subjects,
-  rooms,
   onAdded,
   session,
   picked,
@@ -46,8 +45,6 @@ export function DetentionDialog({
   times: Map<number, { start: number; end: number }>
   /** Subjects to link to, from the lessons on screen. */
   subjects: { code: string; name: string }[]
-  /** Rooms from the lessons on screen, offered as suggestions. */
-  rooms: string[]
   onAdded: (date: string) => void
   /** Goes up each time someone starts a new detention, so the form starts empty then and not when it comes back from picking. */
   session: number
@@ -176,12 +173,7 @@ export function DetentionDialog({
             <Label htmlFor="detention-location">
               {t('location')} <span className="font-normal text-muted-foreground">({t('optional').toLowerCase()})</span>
             </Label>
-            <Input id="detention-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={40} list="detention-rooms" autoComplete="off" placeholder={t('detentionLocationPlaceholder')} className="h-11 text-base" />
-            <datalist id="detention-rooms">
-              {rooms.map((r) => (
-                <option key={r} value={r} />
-              ))}
-            </datalist>
+            <Input id="detention-location" value={location} onChange={(e) => setLocation(e.target.value)} maxLength={40} autoComplete="off" placeholder={t('detentionLocationPlaceholder')} className="h-11 text-base" />
           </div>
 
           <div className="grid gap-1.5">

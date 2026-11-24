@@ -304,7 +304,6 @@ export function Schedule() {
           className: cn('relative cursor-pointer select-none [-webkit-touch-callout:none] [&_*]:pointer-events-none', draft && draft.date === date && from <= draft.to && to >= draft.from && 'after:absolute after:inset-0 after:rounded-xl after:bg-cantaloupe/25 after:ring-2 after:ring-cantaloupe md:after:bottom-3'),
         }
       : { className: '' }
-  const weekRooms = useMemo(() => [...new Set(lessons.flatMap((l) => l.locations))].sort((a, b) => a.localeCompare(b, locale, { numeric: true })), [lessons, locale])
   const lessonGroup = (g: Lesson[]) =>
     g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
@@ -576,7 +575,6 @@ export function Schedule() {
         day={day}
         times={layout.times}
         subjects={editSubjects}
-        rooms={weekRooms}
         onAdded={setDay}
         session={detentionSession}
         picked={picked}
