@@ -40,7 +40,7 @@ function useFormat() {
     const num = new Intl.NumberFormat(locale)
     const day = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short' })
     const dayLong = new Intl.DateTimeFormat(locale, { weekday: 'short', day: 'numeric', month: 'short' })
-    const when = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    const when = new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
     const wd = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' })
     return {
       n: (v: number) => num.format(v),
