@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
-import { ArrowRight, CalendarDays, CalendarRange, CalendarX, Clock, CornerDownLeft, ExternalLink, Hourglass, Loader2, NotebookPen, Search, SearchX, Sparkles, X } from 'lucide-react'
+import { ArrowRight, CalendarDays, CalendarRange, CalendarX, Clock, CornerDownLeft, ExternalLink, GraduationCap, Hourglass, Loader2, NotebookPen, Search, SearchX, Sparkles, X } from 'lucide-react'
 import { api, type Homework, type Lesson } from '@/lib/api'
 import { addDays, defaultDay, formatDay, formatTime, isoWeek, monday, today, weekNumber } from '@/lib/dates'
 import { useI18n } from '@/lib/i18n'
@@ -48,10 +48,13 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
   const closing = useRef(false)
   /** Space from the button's right edge to the end of the header row: the bar stops there. */
   const [right, setRight] = useState(0)
+  const [rowWidth, setRowWidth] = useState(0)
   const measure = useCallback(() => {
     const btn = buttonRef.current
     const row = btn?.offsetParent as HTMLElement | null
-    if (btn && row) setRight(row.clientWidth - btn.offsetLeft - btn.offsetWidth)
+    if (!btn || !row) return
+    setRight(row.clientWidth - btn.offsetLeft - btn.offsetWidth)
+    setRowWidth(row.clientWidth)
   }, [])
   useEffect(() => {
     if (!open) return
@@ -105,15 +108,10 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
     if (!open || !bar || !btn) return
     inputRef.current?.focus()
     if (reduced()) return
-    const b = bar.getBoundingClientRect()
-    const r = btn.getBoundingClientRect()
-    bar.animate(
-      [
-        { clipPath: `inset(${r.top - b.top}px ${b.right - r.right}px ${b.bottom - r.bottom}px ${r.left - b.left}px round 999px)`, opacity: 0.6 },
-        { clipPath: 'inset(0px 0px 0px 0px round 14px)', opacity: 1 },
-      ],
-      { duration: 280, easing: 'cubic-bezier(.2,.9,.25,1)' },
-    )
+    // The bar's own width grows from the button's, so its rounded border moves along instead of being cut off.
+    const to = bar.getBoundingClientRect().width
+    const from = btn.getBoundingClientRect().width
+    bar.animate([{ width: `${from}px`, opacity: 0.7 }, { width: `${to}px`, opacity: 1 }], { duration: 280, easing: 'cubic-bezier(.2,.9,.25,1)' })
   }, [open])
 
   const close = useCallback(() => {
@@ -127,16 +125,10 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
     }
     if (!bar || !btn || reduced()) return done()
     closing.current = true
-    const b = bar.getBoundingClientRect()
-    const r = btn.getBoundingClientRect()
+    const from = bar.getBoundingClientRect().width
+    const to = btn.getBoundingClientRect().width
     bar
-      .animate(
-        [
-          { clipPath: 'inset(0px 0px 0px 0px round 14px)', opacity: 1 },
-          { clipPath: `inset(${r.top - b.top}px ${b.right - r.right}px ${b.bottom - r.bottom}px ${r.left - b.left}px round 999px)`, opacity: 0.4 },
-        ],
-        { duration: 200, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' },
-      )
+      .animate([{ width: `${from}px`, opacity: 1 }, { width: `${to}px`, opacity: 0.5 }], { duration: 200, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' })
       .finished.then(done, done)
   }, [])
 
@@ -207,6 +199,7 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
     t('searchExNext', { subject: exampleSubject }),
     ...(homework && !person ? [t('searchExHomework', { subject: exampleSubject })] : []),
     t('searchExPlan', { n: weekNumber(now) }),
+    t('searchExExam', { subject: exampleSubject }),
     t('searchExCancel'),
     t('searchExNow'),
   ]
@@ -228,14 +221,14 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
       {open && (
         <div
           ref={barRef}
-          style={{ right, '--r': `${right}px` } as CSSProperties}
-          className="absolute inset-y-0 left-0 z-30 flex items-center md:left-auto md:w-[min(38rem,calc(100%-var(--r)))]"
+          style={{ right, '--r': `${right}px`, '--row': `${rowWidth}px` } as CSSProperties}
+          className="absolute inset-y-0 z-30 flex w-[min(14rem,calc(100%-var(--r)))] items-center md:w-[min(22rem,calc(100%-var(--r)))]"
           onBlur={(e) => {
             if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && !q) close()
           }}
         >
           <div className="relative w-full">
-            <label className="flex h-11 items-center gap-2 rounded-[14px] border border-honeydew bg-card pr-1 pl-3 shadow-sm ring-3 ring-honeydew/30">
+            <label className="flex h-11 items-center gap-2 overflow-hidden rounded-[14px] border border-honeydew bg-card pr-1 pl-3 shadow-sm ring-3 ring-honeydew/30">
               {loading && !results.length ? <Loader2 className="size-5 shrink-0 animate-spin text-muted-foreground" /> : <Search className="size-5 shrink-0 text-honeydew-ink" />}
               <input
                 ref={inputRef}
@@ -274,7 +267,7 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
               id="schedule-search-results"
               role="listbox"
               aria-label={t('search')}
-              className="absolute inset-x-0 top-full mt-2 max-h-[min(70dvh,34rem)] overflow-y-auto overscroll-contain rounded-2xl border bg-popover p-1.5 text-popover-foreground shadow-xl animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none"
+              className="absolute top-full right-[calc(-1*var(--r))] mt-2 w-[min(30rem,var(--row))] max-h-[min(70dvh,34rem)] overflow-y-auto overscroll-contain rounded-2xl border bg-popover p-1.5 text-popover-foreground shadow-xl animate-in fade-in-0 slide-in-from-top-1 duration-200 motion-reduce:animate-none"
             >
               {parsed && parsed.chips.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1 px-2 pt-1 pb-2" aria-live="polite">
@@ -381,11 +374,12 @@ function ResultView({ r, dayName, active }: { r: Result; dayName: (d: string) =>
       const tone = cancelled ? 'watermelon' : l.status === 'changed' || l.type === 'detention' ? 'cantaloupe' : 'honeydew'
       return (
         <>
-          <Tile tone={tone}>{l.type === 'detention' ? <Hourglass /> : cancelled ? <CalendarX /> : r.open ? <NotebookPen /> : <Clock />}</Tile>
+          <Tile tone={tone}>{l.type === 'detention' ? <Hourglass /> : cancelled ? <CalendarX /> : l.type === 'exam' ? <GraduationCap /> : r.open ? <NotebookPen /> : <Clock />}</Tile>
           <span className="grid min-w-0 flex-1 gap-0.5">
             <span className="flex min-w-0 items-center gap-2">
               <span className={cn('truncate font-medium', cancelled && 'line-through decoration-watermelon decoration-2')}>{l.title}</span>
               {r.why && <span className="shrink-0 rounded-full bg-honeydew px-1.5 py-px text-[0.7rem] font-semibold text-primary-foreground">{t(r.why === 'next' ? 'searchNext' : r.why === 'prev' ? 'searchPrev' : 'searchNow')}</span>}
+              {l.type === 'exam' && <span className="shrink-0 rounded-full bg-cantaloupe-tint px-1.5 py-px text-[0.7rem] font-semibold text-cantaloupe-ink">{t('type_exam')}</span>}
               {cancelled && <span className="shrink-0 rounded-full bg-watermelon-tint px-1.5 py-px text-[0.7rem] font-semibold text-watermelon-ink">{t('cancelled')}</span>}
             </span>
             <span className="truncate text-sm text-muted-foreground first-letter:uppercase">{when(l)}</span>
