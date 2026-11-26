@@ -16,6 +16,7 @@ export type Tag =
   | { k: 'plan' }
   | { k: 'det' }
   | { k: 'cancel' }
+  | { k: 'exam' }
   | { k: 'change' }
   | { k: 'week' }
   | { k: 'period' }
@@ -32,6 +33,7 @@ const words: [Tag, string[]][] = [
   [{ k: 'hw' }, ['huiswerk', 'homework', 'hw', 'opdracht', 'opdrachten', 'maken', 'leren', 'inleveren', 'assignment', 'assignments', 'due']],
   [{ k: 'plan' }, ['weekplanning', 'planning', 'weekplan', 'itslearning', 'studiewijzer', 'plan', 'planner', 'elo', 'its']],
   [{ k: 'det' }, ['nakomen', 'detention', 'strafuur', 'nablijven']],
+  [{ k: 'exam' }, ['toets', 'toetsen', 'proefwerk', 'proefwerken', 'pw', 'overhoring', 'schriftelijke', 'examen', 'tentamen', 'test', 'tests', 'exam', 'exams', 'quiz']],
   [{ k: 'cancel' }, ['uitval', 'uitvallen', 'vervalt', 'vervallen', 'uitgevallen', 'valt', 'cancelled', 'canceled', 'cancel', 'geannuleerd']],
   [{ k: 'change' }, ['wijziging', 'wijzigingen', 'gewijzigd', 'veranderd', 'roosterwijziging', 'roosterwijzigingen', 'changes', 'changed', 'change']],
   [{ k: 'week' }, ['week', 'wk', 'weeknummer']],
@@ -158,7 +160,7 @@ function namedScore(token: string, n: Named): number {
 
 export type Parsed = {
   /** What the query is after. */
-  intent: 'lesson' | 'hw' | 'plan' | 'det' | 'cancel' | 'change'
+  intent: 'lesson' | 'hw' | 'plan' | 'det' | 'exam' | 'cancel' | 'change'
   when?: 'next' | 'prev' | 'now'
   subjects: Named[]
   teachers: Named[]
@@ -359,6 +361,7 @@ export function parse(query: string, index: Index, today: string, lang: 'nl' | '
       case 'hw':
       case 'plan':
       case 'det':
+      case 'exam':
       case 'cancel':
       case 'change':
         intents.add(tag.k)
@@ -389,7 +392,7 @@ export function parse(query: string, index: Index, today: string, lang: 'nl' | '
     }
   }
   // Order of importance when several were typed.
-  const intent: Parsed['intent'] = intents.has('plan') ? 'plan' : intents.has('det') ? 'det' : intents.has('hw') ? 'hw' : intents.has('cancel') ? 'cancel' : intents.has('change') ? 'change' : 'lesson'
+  const intent: Parsed['intent'] = intents.has('plan') ? 'plan' : intents.has('det') ? 'det' : intents.has('exam') ? 'exam' : intents.has('hw') ? 'hw' : intents.has('cancel') ? 'cancel' : intents.has('change') ? 'change' : 'lesson'
 
   // Dates.
   const thisMonday = monday(today)
@@ -431,6 +434,10 @@ export function parse(query: string, index: Index, today: string, lang: 'nl' | '
   if (missing) chips.push({ k: 'subject', name: missing[0].toUpperCase() + missing.slice(1) })
   return { intent, when, subjects, teachers, room, period, date, week, rest, missing, weeks: [...weeks], chips }
 }
+
+const testWords = /\b(toets(en)?|proefwerk(en)?|pw|overhoring|examen|tentamen|tests?|exams?|quiz)\b/i
+/** Whether a note or homework is about a test. "SO" only in capitals, since "so" is also English. */
+const mentionsTest = (s: string) => !!s && (testWords.test(fold(s)) || /\bSOs?\b/.test(s))
 
 export type Result =
   | { key: string; kind: 'lesson'; lesson: Lesson; open: boolean; why?: 'next' | 'prev' | 'now' }
@@ -539,6 +546,13 @@ export function search(p: Parsed, lessons: Lesson[], homework: Homework[], now: 
     case 'det': {
       const { list } = pickLessons((l) => l.type === 'detention' && (!codes.size || matches(l)))
       list.forEach((l) => asLesson(l, false))
+      break
+    }
+    case 'exam': {
+      // Zermelo marks tests as their own type; schools also write them in the note ("Toets H3"), and so do students in their homework.
+      const { list, why } = pickLessons((l) => regular(l) && matches(l) && (l.type === 'exam' || mentionsTest(l.title) || mentionsTest(l.note) || mentionsTest(l.changeNote) || l.homework.some((h) => mentionsTest(h.text))))
+      list.forEach((l, i) => asLesson(l, l.type !== 'exam' && l.homework.some((h) => mentionsTest(h.text)), i === 0 ? why : undefined))
+      pushHomework(hwItems.filter((h) => mentionsTest(h.text)))
       break
     }
     case 'cancel':
