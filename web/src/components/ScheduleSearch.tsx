@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { ArrowRight, CalendarDays, CalendarRange, CalendarX, Clock, CornerDownLeft, ExternalLink, Hourglass, Loader2, NotebookPen, Search, SearchX, Sparkles, X } from 'lucide-react'
 import { api, type Homework, type Lesson } from '@/lib/api'
@@ -46,6 +46,18 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
   const barRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const closing = useRef(false)
+  /** Space from the button's right edge to the end of the header row: the bar stops there. */
+  const [right, setRight] = useState(0)
+  const measure = useCallback(() => {
+    const btn = buttonRef.current
+    const row = btn?.offsetParent as HTMLElement | null
+    if (btn && row) setRight(row.clientWidth - btn.offsetLeft - btn.offsetWidth)
+  }, [])
+  useEffect(() => {
+    if (!open) return
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [open, measure])
 
   // The weeks around today, shared with the schedule itself so jumping there is instant too.
   const now = today()
@@ -123,12 +135,13 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
           { clipPath: 'inset(0px 0px 0px 0px round 14px)', opacity: 1 },
           { clipPath: `inset(${r.top - b.top}px ${b.right - r.right}px ${b.bottom - r.bottom}px ${r.left - b.left}px round 999px)`, opacity: 0.4 },
         ],
-        { duration: 200, easing: 'cubic-bezier(.4,0,.6,1)' },
+        { duration: 200, easing: 'cubic-bezier(.4,0,.6,1)', fill: 'forwards' },
       )
       .finished.then(done, done)
   }, [])
 
   const show = () => {
+    measure()
     setArmed(true)
     setOpen(true)
   }
@@ -139,6 +152,7 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
       const typing = e.target instanceof HTMLElement && (e.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName))
       if (((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing)) && !document.querySelector('[data-slot="drawer-popup"],[data-slot="dialog-content"]')) {
         e.preventDefault()
+        measure()
         setArmed(true)
         setOpen(true)
         inputRef.current?.focus()
@@ -146,7 +160,17 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [measure])
+
+  // A tap anywhere else closes it, typed text or not.
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      if (!barRef.current?.contains(e.target as Node)) close()
+    }
+    document.addEventListener('pointerdown', onDown, true)
+    return () => document.removeEventListener('pointerdown', onDown, true)
+  }, [open, close])
 
   const run = (r: Result) => {
     switch (r.kind) {
@@ -199,19 +223,20 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
         onClick={show}
         className={cn('inline-flex size-11 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none dark:hover:bg-muted/50', open && 'invisible')}
       >
-        <MelonSearchIcon className="size-5" />
+        <Search className="size-5" />
       </button>
       {open && (
         <div
           ref={barRef}
-          className="absolute inset-y-0 right-0 left-0 z-30 flex items-center md:left-auto md:w-[min(38rem,100%)]"
+          style={{ right, '--r': `${right}px` } as CSSProperties}
+          className="absolute inset-y-0 left-0 z-30 flex items-center md:left-auto md:w-[min(38rem,calc(100%-var(--r)))]"
           onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget) && !q) close()
+            if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget) && !q) close()
           }}
         >
           <div className="relative w-full">
             <label className="flex h-11 items-center gap-2 rounded-[14px] border border-honeydew bg-card pr-1 pl-3 shadow-sm ring-3 ring-honeydew/30">
-              {loading && !results.length ? <Loader2 className="size-5 shrink-0 animate-spin text-muted-foreground" /> : <MelonSearchIcon className="size-5 shrink-0 text-honeydew-ink" />}
+              {loading && !results.length ? <Loader2 className="size-5 shrink-0 animate-spin text-muted-foreground" /> : <Search className="size-5 shrink-0 text-honeydew-ink" />}
               <input
                 ref={inputRef}
                 type="search"
@@ -305,19 +330,6 @@ export function ScheduleSearch({ accountId, person, homework, onAction }: { acco
         </div>
       )}
     </>
-  )
-}
-
-/** Melon's magnifier: a melon slice for a lens, its rind for the rim. */
-export function MelonSearchIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
-      <circle cx="10.5" cy="10.5" r="6.75" />
-      <path d="M6.6 11.2a4 4 0 0 0 7.8 0" stroke="var(--watermelon)" strokeWidth={2.2} />
-      <circle cx="9" cy="12.4" r=".55" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12.4" r=".55" fill="currentColor" stroke="none" />
-      <path d="m20 20-4.4-4.4" />
-    </svg>
   )
 }
 
