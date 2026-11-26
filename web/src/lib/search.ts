@@ -151,7 +151,8 @@ export function buildIndex(lessons: Lesson[]): Index {
 function namedScore(token: string, n: Named): number {
   if (token === n.code) return token.length >= 2 ? 1 : 0
   let best = 0
-  for (const w of tokenize(n.name)) best = Math.max(best, wordScore(token, w))
+  // Words in a name that are also keywords ("Toets muziek") are left to the keyword, so a typo in "toets" still means a test.
+  for (const w of tokenize(n.name)) if (!vocab.has(w) || vocab.get(w)!.k === 'stop') best = Math.max(best, wordScore(token, w))
   // The whole name typed as one word: "lichamelijkeopvoeding".
   const whole = tokenize(n.name).join('')
   if (whole !== n.name && token.length >= 6) best = Math.max(best, wordScore(token, whole))
@@ -439,6 +440,9 @@ const testWords = /\b(toets(en)?|proefwerk(en)?|pw|overhoring|examen|tentamen|te
 /** Whether a note or homework is about a test. "SO" only in capitals, since "so" is also English. */
 const mentionsTest = (s: string) => !!s && (testWords.test(fold(s)) || /\bSOs?\b/.test(s))
 
+/** A "tts" subject is the test of a subject ("ttsmu" is "Toets muziek"), whatever it was renamed to. */
+const isTestSubject = (l: Lesson) => l.subjects.some((x) => x.code.toLowerCase().startsWith('tts') && x.code.length > 3)
+
 export type Result =
   | { key: string; kind: 'lesson'; lesson: Lesson; open: boolean; why?: 'next' | 'prev' | 'now' }
   | { key: string; kind: 'homework'; homework: Homework; lesson?: Lesson }
@@ -550,7 +554,7 @@ export function search(p: Parsed, lessons: Lesson[], homework: Homework[], now: 
     }
     case 'exam': {
       // Zermelo marks tests as their own type; schools also write them in the note ("Toets H3"), and so do students in their homework.
-      const { list, why } = pickLessons((l) => regular(l) && matches(l) && (l.type === 'exam' || mentionsTest(l.title) || mentionsTest(l.note) || mentionsTest(l.changeNote) || l.homework.some((h) => mentionsTest(h.text))))
+      const { list, why } = pickLessons((l) => regular(l) && matches(l) && (l.type === 'exam' || isTestSubject(l) || mentionsTest(l.title) || mentionsTest(l.note) || mentionsTest(l.changeNote) || l.homework.some((h) => mentionsTest(h.text))))
       list.forEach((l, i) => asLesson(l, l.type !== 'exam' && l.homework.some((h) => mentionsTest(h.text)), i === 0 ? why : undefined))
       pushHomework(hwItems.filter((h) => mentionsTest(h.text)))
       break
