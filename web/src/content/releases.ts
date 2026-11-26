@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, CalendarX, Coffee, Hourglass, Info, Layers, ListChecks, MessageSquareHeart, NotebookPen, Pencil, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, Hourglass, Info, Layers, ListChecks, MessageSquareHeart, NotebookPen, Pencil, Search, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'schedule-search',
+    date: '2026-11-26',
+    icon: Search,
+    nl: 'Zoek in je rooster: typ "volgende les economie" of "huiswerk wiskunde morgen".',
+    en: 'Search your schedule: type "next economics lesson" or "maths homework tomorrow".',
+  },
   {
     id: 'detention-edit',
     date: '2026-11-23',

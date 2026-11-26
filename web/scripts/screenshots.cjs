@@ -106,8 +106,24 @@ async function main() {
     await drawer.locator('form').filter({ has: page.locator('#week-plan') }).getByRole('button', { name: 'Opslaan' }).click()
     await drawer.getByRole('link', { name: /Weekplanning week/ }).waitFor()
     await shot(`28-week-plan-${theme}`)
+    const planned = (await drawer.getByRole('heading').first().innerText()).toLowerCase()
     await page.keyboard.press('Escape')
     await drawer.waitFor({ state: 'detached' })
+
+    // Search: the button grows into a bar that reads plain questions, typos and all.
+    await page.getByRole('button', { name: 'Zoeken', exact: true }).click()
+    const search = page.getByRole('combobox', { name: 'Zoeken' })
+    await search.fill(`volgnde les ${planned}`)
+    await page.locator('#schedule-search-results [role="option"]').first().waitFor()
+    await shot(`30-search-next-${theme}`)
+    await search.press('Enter')
+    await search.waitFor({ state: 'detached' })
+    await page.getByRole('button', { name: 'Zoeken', exact: true }).click()
+    await search.fill(`weekplanning ${planned}`)
+    await page.locator('#schedule-search-results [role="option"]', { hasText: 'Weekplanning' }).first().waitFor()
+    await shot(`31-search-week-plan-${theme}`)
+    await search.press('Escape')
+    await search.waitFor({ state: 'detached' })
 
     // The calendar feed links every lesson to Melon: that link opens it, even in another week.
     const target = await page.evaluate(async () => {
