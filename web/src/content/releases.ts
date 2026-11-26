@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, CalendarX, Coffee, GraduationCap, Hourglass, Info, Layers, ListChecks, MessageSquareHeart, NotebookPen, Pencil, Search, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, NotebookText, CalendarRange, CalendarX, Coffee, GraduationCap, Hourglass, Info, Layers, ListChecks, MessageSquareHeart, NotebookPen, Pencil, Search, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'notes-and-boards',
+    date: '2026-11-26',
+    icon: NotebookText,
+    nl: 'Schrijf notities per vak of algemeen, en plan met een kanban- en hackbanbord.',
+    en: 'Write notes per subject or general ones, and plan on a kanban and a hackban board.',
+  },
   {
     id: 'search-tests',
     date: '2026-11-26',

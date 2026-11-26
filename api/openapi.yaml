@@ -55,6 +55,10 @@ tags:
     description: Homework written on lessons, kept in Melon, which follows a lesson when Zermelo moves it, and week plan links per subject.
   - name: Detentions
     description: Extra hours at school (like detention) that an account adds to its own schedule.
+  - name: Notes
+    description: Markdown notes kept in Melon, general or about one subject.
+  - name: Boards
+    description: Cards on a kanban board (todo, doing, done) and a hackban board for side projects (idea, hacking, shipped).
 paths:
   /accounts:
     get:
@@ -674,6 +678,183 @@ paths:
         "204": { description: Removed. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/notes:
+    parameters:
+      - $ref: "#/components/parameters/account"
+    get:
+      tags: [Notes]
+      operationId: listNotes
+      summary: List notes
+      description: The account's notes, pinned first, then the latest changed.
+      parameters:
+        - name: subject
+          in: query
+          description: Only notes about this subject code. Empty (`?subject=`) for only general notes. Leave out for all notes.
+          schema: { type: string, maxLength: 32 }
+      responses:
+        "200":
+          description: The notes.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Note" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Notes]
+      operationId: addNote
+      summary: Add a note
+      description: A note needs a title or some text. Only stored in Melon.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteInput" }
+      responses:
+        "201":
+          description: The new note.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Note" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/notes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, examples: ["note_vakhve3jtxkv"] }
+    patch:
+      tags: [Notes]
+      operationId: updateNote
+      summary: Update a note
+      description: Leave out what stays the same.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NoteInput" }
+      responses:
+        "200":
+          description: The note as it is now.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Note" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Notes]
+      operationId: deleteNote
+      summary: Delete a note
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/boards/{board}/cards:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: board
+        in: path
+        required: true
+        description: "`kanban` (lanes `todo`, `doing`, `done`) or `hackban` (lanes `idea`, `hacking`, `shipped`)."
+        schema: { type: string, enum: [kanban, hackban] }
+    get:
+      tags: [Boards]
+      operationId: listCards
+      summary: List cards
+      description: Every card on the board, by lane (left to right) and position.
+      responses:
+        "200":
+          description: The cards.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { type: array, items: { $ref: "#/components/schemas/Card" } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Boards]
+      operationId: addCard
+      summary: Add a card
+      description: Goes last in its lane (the first lane when `lane` is left out), unless `index` says otherwise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/CardInput"
+                - required: [title]
+      responses:
+        "201":
+          description: The new card.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Card" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /accounts/{account}/cards/{id}:
+    parameters:
+      - $ref: "#/components/parameters/account"
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, examples: ["card_vakhve3jtxkv"] }
+    patch:
+      tags: [Boards]
+      operationId: updateCard
+      summary: Update or move a card
+      description: "`lane` moves it to another lane (last, unless `index` is given); `index` alone moves it within its lane. Leave out what stays the same."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardInput" }
+      responses:
+        "200":
+          description: The card as it is now.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data: { $ref: "#/components/schemas/Card" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Boards]
+      operationId: deleteCard
+      summary: Delete a card
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
 components:
   securitySchemes:
     apiKey:
@@ -866,6 +1047,45 @@ components:
             title: { type: string }
             subjects: { type: array, items: { type: string }, description: Subject codes. }
             status: { type: string, enum: [scheduled, changed, cancelled, gone], description: "`gone`: no longer in the schedule." }
+    Note:
+      type: object
+      required: [id, subject, title, text, pinned, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        subject: { type: string, description: "Subject code, or empty for a general note." }
+        title: { type: string }
+        text: { type: string, description: Markdown. }
+        pinned: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    NoteInput:
+      type: object
+      properties:
+        subject: { type: string, maxLength: 32, description: "Subject code, e.g. `wi`, or empty for a general note." }
+        title: { type: string, maxLength: 200 }
+        text: { type: string, maxLength: 20000, description: Markdown., examples: ["## Formules\n- abc-formule"] }
+        pinned: { type: boolean }
+    Card:
+      type: object
+      required: [id, board, lane, position, title, text, subject, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        board: { type: string, enum: [kanban, hackban] }
+        lane: { type: string, enum: [todo, doing, done, idea, hacking, shipped] }
+        position: { type: integer, description: Place in the lane, from 0. }
+        title: { type: string }
+        text: { type: string, description: Markdown. }
+        subject: { type: string, description: "Subject code, or empty." }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CardInput:
+      type: object
+      properties:
+        lane: { type: string, description: A lane on the card's board. }
+        index: { type: integer, minimum: 0, description: Place in the lane, from 0. }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        text: { type: string, maxLength: 5000, description: Markdown. }
+        subject: { type: string, maxLength: 32, description: "Subject code, or empty." }
     Announcement:
       type: object
       required: [id, title, text, start, end]

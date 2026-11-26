@@ -67,6 +67,12 @@ type mcpArgs struct {
 	Done        *bool   `json:"done"`
 	MoveTo      string  `json:"move_to"`
 	URL         string  `json:"url"`
+	Subject     *string `json:"subject"`
+	Title       *string `json:"title"`
+	Pinned      *bool   `json:"pinned"`
+	Board       string  `json:"board"`
+	Lane        *string `json:"lane"`
+	Index       *int    `json:"index"`
 }
 
 func schema(required []string, props map[string]any) map[string]any {

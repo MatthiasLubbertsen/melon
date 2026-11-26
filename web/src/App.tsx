@@ -11,6 +11,7 @@ import { I18nProvider } from '@/lib/i18n'
 import { SessionProvider, useSession } from '@/lib/session'
 import { Consent } from '@/pages/Consent'
 import { Schedule } from '@/pages/Schedule'
+import { Notes } from '@/pages/Notes'
 import { Settings } from '@/pages/Settings'
 import { Welcome } from '@/pages/Welcome'
 
@@ -58,6 +59,7 @@ export default function App() {
               <Suspense fallback={<Splash />}>
                 <Routes>
                   <Route path="/" element={<Home />} />
+                  <Route path="/notes" element={<NeedsAccount><Notes /></NeedsAccount>} />
                   <Route path="/settings" element={<NeedsAccount><Settings /></NeedsAccount>} />
                   <Route path="/oauth/authorize" element={<Consent />} />
                   <Route path="/docs" element={<Docs />} />

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowDown, CalendarCheck, ChevronLeft, ChevronRight, CloudOff, Megaphone, Plus, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
+import { ArrowDown, CalendarCheck, ChevronLeft, ChevronRight, CloudOff, Megaphone, NotebookText, Plus, RefreshCw, Settings, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { AccountMenu } from '@/components/AccountMenu'
@@ -412,8 +412,11 @@ export function Schedule() {
             </Button>
           )}
           {/* Detentions belong to your own schedule, not to someone you look up. */}
+          <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('notesAndBoards')} title={t('notesAndBoards')} render={<Link to="/notes" />}>
+            <NotebookText />
+          </Button>
           {!person && (
-            <Button variant="outline" size="icon" className="ml-auto size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => (setEditing(null), setDetentionSession((n) => n + 1), setPicked(null), setAdding('form'))}>
+            <Button variant="outline" size="icon" className="size-9 rounded-full" aria-label={t('addDetention')} title={t('addDetention')} onClick={() => (setEditing(null), setDetentionSession((n) => n + 1), setPicked(null), setAdding('form'))}>
               <Plus />
             </Button>
           )}

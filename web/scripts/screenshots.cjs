@@ -309,6 +309,61 @@ async function main() {
     await context.close()
   }
 
+  // Notes and boards: a note per subject and a general one in Markdown, a card
+  // dragged across the kanban, and the hackban for side projects.
+  for (const [theme, viewport, tag] of [['light', phone, 'phone'], ['dark', desktop, 'desktop']]) {
+    console.log(`notes and boards, ${tag} ${theme}`)
+    const { context, page, shot } = await session({ viewport, theme })
+    await page.goto(BASE)
+    await page.getByRole('button', { name: 'Bekijk de demo' }).click()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.getByRole('link', { name: 'Notities en borden' }).click()
+    await page.getByRole('heading', { name: 'Notities en borden' }).waitFor()
+    const drawer = page.locator('[data-slot="drawer-popup"]')
+    for (const [title, subject, text, pin] of [
+      ['Formules hoofdstuk 3', /^Natuurkunde$/, '## Kracht\n- **F = m · a**\n- W = F · s\n\n> Leer deze uit je hoofd voor de toets!', false],
+      ['Deze week', null, '- [x] Boek terugbrengen\n- [ ] Gymkleren mee', true],
+    ]) {
+      await page.getByRole('button', { name: 'Nieuwe notitie' }).click()
+      await drawer.waitFor()
+      await drawer.getByRole('textbox', { name: 'Titel' }).fill(title)
+      if (subject) await drawer.getByRole('radio', { name: subject }).click()
+      await drawer.getByRole('textbox', { name: 'Notitie' }).fill(text)
+      if (pin) await drawer.getByRole('button', { name: 'Vastzetten' }).click()
+      await drawer.getByRole('button', { name: 'Opslaan' }).click()
+      await drawer.waitFor({ state: 'detached' })
+    }
+    await shot(`40-notes-${tag}-${theme}`)
+
+    await page.getByRole('tab', { name: 'Kanban' }).click()
+    for (const [lane, title] of [['Te doen', 'Profielwerkstuk onderwerp kiezen'], ['Te doen', 'Leesverslag Nederlands'], ['Bezig', 'Oefentoets wiskunde']]) {
+      await page.getByRole('button', { name: `Kaart toevoegen aan ${lane}` }).click()
+      await drawer.waitFor()
+      await drawer.getByRole('textbox', { name: 'Titel' }).fill(title)
+      await drawer.getByRole('button', { name: 'Opslaan' }).click()
+      await drawer.waitFor({ state: 'detached' })
+    }
+    const grip = await page.locator('[data-lane="todo"] [data-card] [data-grip]').first().boundingBox()
+    const into = await page.locator('[data-lane="doing"] [data-card]').first().boundingBox()
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + 8)
+    await page.mouse.down()
+    await page.mouse.move(into.x + into.width / 2, into.y + 4, { steps: 12 })
+    await page.mouse.up()
+    await page.locator('[data-lane="doing"] [data-card]', { hasText: 'Profielwerkstuk' }).waitFor()
+    await shot(`41-kanban-${tag}-${theme}`)
+
+    await page.getByRole('tab', { name: 'Hackban' }).click()
+    for (const [lane, title] of [['Idee', 'Melon Discord-bot'], ['Hacken', 'Portfolio-site'], ['Geshipt', 'Sprig-game']]) {
+      await page.getByRole('button', { name: `Kaart toevoegen aan ${lane}` }).click()
+      await drawer.waitFor()
+      await drawer.getByRole('textbox', { name: 'Titel' }).fill(title)
+      await drawer.getByRole('button', { name: 'Opslaan' }).click()
+      await drawer.waitFor({ state: 'detached' })
+    }
+    await shot(`42-hackban-${tag}-${theme}`)
+    await context.close()
+  }
+
   // Detention: drag across periods on the schedule from the add dialog, then see it share the
   // card of the lesson in that period (or take a free period whole).
   for (const theme of ['light', 'dark']) {

@@ -79,6 +79,15 @@ export type Schedule = {
   summary: { lessons: number; changed: number; cancelled: number }
 }
 
+/** A Markdown note. subject is a subject code, or '' for a general note. */
+export type Note = { id: string; subject: string; title: string; text: string; pinned: boolean; createdAt: string; updatedAt: string }
+export type NoteInput = Partial<Pick<Note, 'subject' | 'title' | 'text' | 'pinned'>>
+export type Board = 'kanban' | 'hackban'
+/** Lanes per board, left to right. */
+export const lanes: Record<Board, string[]> = { kanban: ['todo', 'doing', 'done'], hackban: ['idea', 'hacking', 'shipped'] }
+export type Card = { id: string; board: Board; lane: string; position: number; title: string; text: string; subject: string; createdAt: string; updatedAt: string }
+export type CardInput = Partial<Pick<Card, 'lane' | 'title' | 'text' | 'subject'>> & { index?: number }
+
 /** An hour the account added itself, such as detention. Times are school-local "15:30". */
 export type Detention = { id: string; date: string; start: string; end: string; period: { from: number; to: number } | null; subject: string; title: string; location: string }
 export type DetentionInput = Omit<Detention, 'id'>
@@ -288,6 +297,19 @@ export const api = {
     update: (account: string, id: string, change: { text?: string; done?: boolean; moveTo?: string; date?: string }) =>
       data(request<Homework>('PATCH', `/api/v1/accounts/${account}/homework/${id}`, change)),
     remove: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/homework/${id}`)),
+  },
+
+  notes: {
+    list: (account: string) => data(request<Note[]>('GET', `/api/v1/accounts/${account}/notes`)),
+    add: (account: string, note: NoteInput) => data(request<Note>('POST', `/api/v1/accounts/${account}/notes`, note)),
+    update: (account: string, id: string, change: NoteInput) => data(request<Note>('PATCH', `/api/v1/accounts/${account}/notes/${id}`, change)),
+    remove: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/notes/${id}`)),
+  },
+  cards: {
+    list: (account: string, board: Board) => data(request<Card[]>('GET', `/api/v1/accounts/${account}/boards/${board}/cards`)),
+    add: (account: string, board: Board, card: CardInput) => data(request<Card>('POST', `/api/v1/accounts/${account}/boards/${board}/cards`, card)),
+    update: (account: string, id: string, change: CardInput) => data(request<Card>('PATCH', `/api/v1/accounts/${account}/cards/${id}`, change)),
+    remove: (account: string, id: string) => data(request<void>('DELETE', `/api/v1/accounts/${account}/cards/${id}`)),
   },
 
   setWeekPlan: (account: string, subject: string, week: string, url: string) =>
