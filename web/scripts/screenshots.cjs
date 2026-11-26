@@ -17,9 +17,24 @@ async function main() {
   const browser = await chromium.launch()
   const problems = []
 
-  async function session({ viewport, theme, lang = 'nl' }) {
+  // After the schedule loads, a profile without a PIN is asked to choose one.
+  // Flows that are about something else wave it off with "Later" as soon as
+  // it shows (see session()).
+  const pinPrompt = (page) => page.getByRole('dialog', { name: /Kies een pincode|Choose a PIN/ })
+
+  async function session({ viewport, theme, lang = 'nl', keepPinPrompt = false }) {
     const context = await browser.newContext({ viewport, deviceScaleFactor: SCALE, colorScheme: theme, locale: 'nl-NL', timezoneId: 'Europe/Amsterdam', hasTouch: viewport.width < 600 })
     await context.addInitScript(([l]) => localStorage.setItem('melon.lang', l), [lang])
+    if (!keepPinPrompt) {
+      await context.addInitScript(() => {
+        new MutationObserver(() => {
+          for (const d of document.querySelectorAll('[role="dialog"]:not([data-closed])')) {
+            if (!/Kies een pincode|Choose a PIN/.test(d.querySelector('h2')?.textContent ?? '')) continue
+            for (const b of d.querySelectorAll('button')) if (b.textContent === 'Later') b.click()
+          }
+        }).observe(document, { childList: true, subtree: true })
+      })
+    }
     const page = await context.newPage()
     page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`))
     page.on('console', (m) => {
@@ -28,6 +43,7 @@ async function main() {
     })
     const shot = async (name) => {
       await page.waitForLoadState('networkidle')
+      if (!keepPinPrompt) await pinPrompt(page).waitFor({ state: 'detached' })
       await page.waitForTimeout(350) // let transitions settle
       await page.screenshot({ path: path.join(OUT, `${name}.png`) })
       console.log(`  ${name}.png`)
@@ -217,6 +233,36 @@ async function main() {
     await field.waitFor()
     await field.fill('16528')
     await shot(`16-teacher-code-lookup-${theme}`)
+    await context.close()
+  }
+
+  // Someone new links their school: the schedule loads behind a blur and asks
+  // for a PIN, with the "Gekoppeld" toast still on top. "Later" puts it off
+  // until the next visit.
+  for (const theme of ['light', 'dark']) {
+    console.log(`pin prompt, ${theme}`)
+    const { context, page, shot } = await session({ viewport: phone, theme, keepPinPrompt: true })
+    await page.goto(BASE)
+    await page.locator('#school').fill('demo')
+    await page.locator('#secret').fill('123456789012')
+    await page.getByRole('button', { name: 'Koppelen' }).click()
+    const prompt = pinPrompt(page)
+    await prompt.waitFor()
+    await page.getByText(/^Gekoppeld:/).waitFor()
+    await shot(`40-pin-prompt-${theme}`)
+    await prompt.getByRole('button', { name: 'Later' }).click()
+    await prompt.waitFor({ state: 'detached' })
+    await page.reload()
+    await prompt.waitFor()
+    await prompt.getByLabel('Pincode').fill('4821')
+    await prompt.getByRole('button', { name: 'Opslaan' }).click()
+    await prompt.waitFor({ state: 'detached' })
+    await page.getByText(/^Pincode opgeslagen/).waitFor()
+    await shot(`41-pin-saved-${theme}`)
+    await page.reload()
+    await page.locator('[data-status]:visible').first().waitFor()
+    await page.waitForTimeout(500)
+    if (await prompt.isVisible()) throw new Error('asked for a PIN again after setting one')
     await context.close()
   }
 

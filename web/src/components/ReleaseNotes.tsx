@@ -21,6 +21,12 @@ function unseen(seen: string | null): Release[] {
   return i === -1 ? [] : releases.slice(0, i)
 }
 
+/** Whether the "Nieuw in Melon" popup still has something to show this profile. */
+export function notesPending(seen: string | null): boolean {
+  const newest = releases[0]?.id
+  return !!newest && seen !== newest && unseen(seen).length > 0
+}
+
 /** Groups notes by the day they went live, keeping the order. */
 function byDay(notes: Release[]): [string, Release[]][] {
   const days: [string, Release[]][] = []
