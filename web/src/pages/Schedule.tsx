@@ -14,6 +14,7 @@ import { detentionSlots, isDetention, layoutWeek, lineOf, spanOf } from '@/lib/l
 import { LinkDialog } from '@/components/LinkForm'
 import { Logo } from '@/components/Logo'
 import { PeopleSearch } from '@/components/PeopleSearch'
+import { ScheduleSearch, type SearchAction } from '@/components/ScheduleSearch'
 import { api, type Detention, type Lesson, type Person } from '@/lib/api'
 import { addDays, defaultDay, formatDay, formatTime, isoWeek, monday, today, weekNumber } from '@/lib/dates'
 import { useNow, usePullToRefresh } from '@/lib/hooks'
@@ -306,6 +307,59 @@ export function Schedule() {
       : { className: '' }
   const lessonGroup = (g: Lesson[]) =>
     g.length === 1 ? <LessonCard key={g[0].id} lesson={g[0]} isNow={isNow(g[0])} onOpen={() => setOpenLesson(g[0])} /> : <LessonGroup key={g[0].id} lessons={g} isNow={isNow} onOpen={setOpenLesson} />
+  // Search: jump to a lesson and make it light up, open it, or go to a day.
+  const [flash, setFlash] = useState<{ lesson?: string; day?: string; n: number } | null>(null)
+  const onSearch = useCallback(
+    (a: SearchAction) => {
+      switch (a.type) {
+        case 'focus':
+          setDay(a.lesson.date)
+          setFlash((f) => ({ lesson: a.lesson.id, n: (f?.n ?? 0) + 1 }))
+          break
+        case 'open':
+          setDay(a.lesson.date)
+          setOpenLesson(a.lesson)
+          break
+        case 'openRef':
+          setDay(a.date)
+          setLink({ day: a.date, lesson: a.instance })
+          break
+        case 'day':
+          setDay(a.date)
+          setFlash((f) => ({ day: a.date, n: (f?.n ?? 0) + 1 }))
+          break
+      }
+    },
+    [setDay],
+  )
+  useEffect(() => {
+    if (!flash || loading) return
+    const frame = requestAnimationFrame(() => {
+      const shown = (el: Element | null): el is HTMLElement => el instanceof HTMLElement && el.getClientRects().length > 0 && el.getBoundingClientRect().height > 4
+      let el: HTMLElement | null = null
+      if (flash.lesson) {
+        const id = CSS.escape(flash.lesson)
+        el = [...document.querySelectorAll(`[data-lesson="${id}"]`)].find(shown) ?? [...document.querySelectorAll(`[data-lessons~="${id}"]`)].find(shown) ?? null
+      } else if (flash.day) {
+        el = [...document.querySelectorAll(`nav [data-day="${flash.day}"]`)].find(shown) ?? null
+      }
+      setFlash(null)
+      if (!el) return
+      const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      if (flash.lesson) el.scrollIntoView({ block: 'center', behavior: still ? 'auto' : 'smooth' })
+      el.animate(
+        still
+          ? [{ outline: '3px solid var(--honeydew)', outlineOffset: '2px' }, { outline: '3px solid transparent', outlineOffset: '2px' }]
+          : [
+              { boxShadow: '0 0 0 0 color-mix(in oklab, var(--honeydew) 85%, transparent)', transform: 'scale(1)' },
+              { boxShadow: '0 0 0 5px color-mix(in oklab, var(--honeydew) 70%, transparent)', transform: 'scale(1.025)', offset: 0.3 },
+              { boxShadow: '0 0 0 12px transparent', transform: 'scale(1)' },
+            ],
+        { duration: 850, iterations: still ? 1 : 2, easing: 'ease-out' },
+      )
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [flash, loading, day])
   const busy = manual || ptr.refreshing || (query.isFetching && !query.isPending)
 
   return (
@@ -323,7 +377,7 @@ export function Schedule() {
       </div>
 
       <header className="sticky top-0 z-20 border-b bg-background/90 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur md:px-6">
-        <div className="flex items-center gap-1">
+        <div className="relative flex items-center gap-1">
           <Logo className="mr-1 hidden text-2xl sm:inline-flex" withName />
           <div className="min-w-0 shrink sm:ml-3">
             <AccountMenu />
@@ -333,6 +387,7 @@ export function Schedule() {
             <RefreshCw className={cn('size-3.5', busy && 'animate-spin')} />
           </button>
           <span className="flex-1" />
+          <ScheduleSearch accountId={account.id} person={person?.code ?? ''} homework={account.role !== 'parent'} onAction={onSearch} />
           {/* Parents have no homework of their own. */}
           {!person && account.role !== 'parent' && <HomeworkMenu accountId={account.id} onPick={setDay} />}
           <Button variant="ghost" size="icon" className="size-11 shrink-0" aria-label={t('settings')} render={<Link to="/settings" />}>

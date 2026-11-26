@@ -94,6 +94,7 @@ export function LessonCard({ lesson, isNow, onOpen }: { lesson: Lesson; isNow: b
     <button
       type="button"
       onClick={onOpen}
+      data-lesson={lesson.id}
       data-status={lesson.type === 'detention' ? 'detention' : lesson.status}
       className={cn(
         'relative flex w-full items-stretch gap-3 overflow-hidden rounded-xl border bg-card py-2.5 pr-3 pl-4 text-left transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:h-full md:gap-2.5 md:py-2 md:pr-2.5 md:pl-3.5',
@@ -146,7 +147,7 @@ export function LessonGroup({ lessons, isNow, onOpen }: { lessons: Lesson[]; isN
   const cancelled = lessons.every((l) => l.status === 'cancelled')
   const names = lessons.map((l) => l.title).join(', ')
   return (
-    <div className="grid gap-2">
+    <div className="grid gap-2" data-lessons={lessons.map((l) => l.id).join(' ')}>
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
@@ -221,7 +222,7 @@ export function SplitCard({ lesson, detentions, isNow, onOpen }: { lesson: Lesso
         </span>
       </span>
       <span className="grid min-w-0 flex-1 auto-rows-fr">
-        <button type="button" onClick={() => onOpen(lesson)} data-status={lesson.status} className={cn(half, 'hover:bg-muted/50')}>
+        <button type="button" onClick={() => onOpen(lesson)} data-lesson={lesson.id} data-status={lesson.status} className={cn(half, 'hover:bg-muted/50')}>
           <span className={cn('truncate text-[0.95rem] leading-snug font-medium', cancelled && 'text-muted-foreground line-through decoration-watermelon decoration-2')}>
             {hyphenate(lesson.title, lang)}
           </span>
@@ -235,7 +236,7 @@ export function SplitCard({ lesson, detentions, isNow, onOpen }: { lesson: Lesso
         {detentions.map((d) => {
           const sameTime = d.start === lesson.start && d.end === lesson.end
           return (
-            <button key={d.id} type="button" onClick={() => onOpen(d)} data-status="detention" className={cn(half, 'border-t border-dashed border-cantaloupe/60 bg-cantaloupe-tint/50 hover:bg-cantaloupe-tint')}>
+            <button key={d.id} type="button" onClick={() => onOpen(d)} data-lesson={d.id} data-status="detention" className={cn(half, 'border-t border-dashed border-cantaloupe/60 bg-cantaloupe-tint/50 hover:bg-cantaloupe-tint')}>
               <span className="flex min-w-0 items-center gap-1.5">
                 <Hourglass aria-hidden="true" className="size-3.5 shrink-0 text-cantaloupe-ink" />
                 <span className="truncate text-[0.95rem] leading-snug font-medium">{hyphenate(d.title, lang)}</span>
