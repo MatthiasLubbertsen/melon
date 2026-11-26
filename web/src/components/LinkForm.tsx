@@ -11,8 +11,9 @@ import { api, type Account } from '@/lib/api'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
 import { TokenHelp } from '@/components/TokenHelp'
+import { PinInput } from '@/components/SignInForm'
 
-/** Link a Zermelo account: school + link code, or school + API token. */
+/** Link a Zermelo account: school + link code, or school + API token. A profile without a PIN (a new one) picks its PIN here too. */
 export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) => void; initialSchool?: string }) {
   const { t, error } = useI18n()
   const { session, setActive, reload } = useSession()
@@ -20,8 +21,10 @@ export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) 
   const [mode, setMode] = useState<'code' | 'token'>('code')
   const [school, setSchool] = useState(initialSchool ?? session.defaultSchool ?? '')
   const [secret, setSecret] = useState('')
+  const [pin, setPin] = useState('')
+  const needPin = !session.login
   const [busy, setBusy] = useState(false)
-  const [problem, setProblem] = useState<{ field: 'school' | 'secret' | 'form'; text: string } | null>(null)
+  const [problem, setProblem] = useState<{ field: 'school' | 'secret' | 'pin' | 'form'; text: string } | null>(null)
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -29,8 +32,9 @@ export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) 
     setBusy(true)
     setProblem(null)
     try {
-      const account = await api.link(mode === 'code' ? { school, code: secret } : { school, token: secret })
+      const account = await api.link({ school, ...(mode === 'code' ? { code: secret } : { token: secret }), ...(needPin ? { pin } : {}) })
       setSecret('')
+      setPin('')
       setActive(account.id)
       await reload()
       qc.removeQueries({ queryKey: ['schedule', account.id] })
@@ -38,7 +42,8 @@ export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) 
       onLinked?.(account)
     } catch (err) {
       const code = (err as { code?: string }).code
-      const field = code === 'school_not_found' ? 'school' : code === 'invalid_link_code' || code === 'invalid_token' ? 'secret' : 'form'
+      const field =
+        code === 'school_not_found' ? 'school' : code === 'invalid_link_code' || code === 'invalid_token' ? 'secret' : code === 'invalid_pin' ? 'pin' : 'form'
       setProblem({ field, text: error(err) })
     } finally {
       setBusy(false)
@@ -104,6 +109,16 @@ export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) 
 
       {mode === 'code' && <TokenHelp />}
 
+      {needPin && (
+        <div className="grid gap-1.5">
+          <Label htmlFor="new-pin">{t('newPin')}</Label>
+          <PinInput id="new-pin" name="new-password" value={pin} onChange={setPin} autoComplete="new-password" aria-invalid={problem?.field === 'pin'} aria-describedby="new-pin-hint" />
+          <p id="new-pin-hint" className={problem?.field === 'pin' ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
+            {problem?.field === 'pin' ? problem.text : t('newPinHint')}
+          </p>
+        </div>
+      )}
+
       {problem?.field === 'form' && (
         <p role="alert" className="flex items-center gap-2 rounded-lg bg-watermelon-tint px-3 py-2 text-sm text-watermelon-ink">
           <CircleAlert className="size-4 shrink-0" />
@@ -111,7 +126,7 @@ export function LinkForm({ onLinked, initialSchool }: { onLinked?: (a: Account) 
         </p>
       )}
 
-      <Button type="submit" className="h-12 text-base" disabled={busy || !school.trim() || !secret.trim()}>
+      <Button type="submit" className="h-12 text-base" disabled={busy || !school.trim() || !secret.trim() || (needPin && pin.length !== 4)}>
         {busy && <Loader2 className="animate-spin" />}
         {busy ? t('connecting') : t('connect')}
       </Button>

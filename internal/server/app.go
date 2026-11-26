@@ -85,6 +85,10 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 		School string `json:"school"`
 		Code   string `json:"code"`
 		Token  string `json:"token"`
+		// PIN is required when the profile has no sign-in yet (always the
+		// case for a new one), so nobody ends up with a profile that only
+		// opens on this one device.
+		PIN string `json:"pin"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeErr(w, err)
@@ -92,6 +96,15 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(body.School) == "" {
 		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_request", "A school is required."))
+		return
+	}
+	needPIN, err := s.needsPIN(r)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if needPIN && !pinShape.MatchString(body.PIN) {
+		writeErr(w, core.Errf(http.StatusBadRequest, "invalid_pin", "Choose a PIN of exactly four digits."))
 		return
 	}
 	// Verify with Zermelo before creating a profile, so failed attempts
@@ -111,7 +124,33 @@ func (s *Server) handleLink(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	if needPIN {
+		acc, err := s.Store.Account(r.Context(), user, account.ID)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		l := store.Login{UserID: user, Name: acc.TokenUser(), School: acc.School, PINHash: s.Core.Box.PINHash(user, body.PIN)}
+		if err := s.Store.SetLogin(r.Context(), l); err != nil {
+			writeErr(w, err)
+			return
+		}
+	}
 	writeJSON(w, http.StatusCreated, map[string]any{"data": account})
+}
+
+// needsPIN reports whether linking from this request has to set a PIN: there
+// is no profile yet, or the one there is has no sign-in.
+func (s *Server) needsPIN(r *http.Request) (bool, error) {
+	user, ok := s.sessionUser(r)
+	if !ok {
+		return true, nil
+	}
+	_, err := s.Store.Login(r.Context(), user)
+	if errors.Is(err, store.ErrNotFound) {
+		return true, nil
+	}
+	return false, err
 }
 
 // handleDemo links the generated demo accounts (a student and a teacher).

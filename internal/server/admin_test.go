@@ -49,7 +49,7 @@ func TestAdmin(t *testing.T) {
 
 	// A profile with only the demo student is not.
 	user := admin.fresh()
-	code, body := user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	code, body := user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken, "pin": "1234"})
 	if code != 201 {
 		t.Fatalf("link student: %d %v", code, body)
 	}
@@ -265,7 +265,7 @@ func TestImpersonationRunsOut(t *testing.T) {
 	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
 	admin.do("POST", "/api/app/demo", "", map[string]any{})
 	user := admin.fresh()
-	user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken, "pin": "1234"})
 	_, body := admin.do("GET", "/api/app/admin/profiles", "", nil)
 	var profile string
 	for _, p := range body["data"].([]any) {
@@ -301,7 +301,7 @@ func TestAdminMCP(t *testing.T) {
 	_, body := admin.do("POST", "/api/app/demo", "", map[string]any{})
 	own, _ := ids(t, body)
 	user := admin.fresh()
-	_, body = user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	_, body = user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken, "pin": "1234"})
 	student := data(t, body)["id"].(string)
 
 	// Only admins may make a key for the admin tools, and only on purpose.

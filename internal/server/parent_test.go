@@ -10,7 +10,7 @@ func TestParentAccount(t *testing.T) {
 	c := setup(t)
 	link := func() {
 		t.Helper()
-		if code, body := c.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken}); code != 201 {
+		if code, body := c.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken, "pin": "1234"}); code != 201 {
 			t.Fatalf("link parent: %d %v", code, body)
 		}
 	}
@@ -86,7 +86,7 @@ func TestAdminSeesParentName(t *testing.T) {
 	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
 	admin.do("POST", "/api/app/demo", "", map[string]any{})
 	parent := admin.fresh()
-	if code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken}); code != 201 {
+	if code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken, "pin": "1234"}); code != 201 {
 		t.Fatalf("link parent: %d %v", code, body)
 	}
 	_, body := admin.do("GET", "/api/app/admin/profiles?q=Eva", "", nil)
@@ -104,7 +104,7 @@ func TestAdminSeesParentName(t *testing.T) {
 // Parents have no homework: not on the schedule, and the API refuses it.
 func TestParentHasNoHomework(t *testing.T) {
 	c := setup(t)
-	if code, body := c.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken}); code != 201 {
+	if code, body := c.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken, "pin": "1234"}); code != 201 {
 		t.Fatalf("link parent: %d %v", code, body)
 	}
 	_, body := c.do("GET", "/api/app/session", "", nil)

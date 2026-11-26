@@ -10,7 +10,7 @@ func TestFeedback(t *testing.T) {
 	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
 	admin.do("POST", "/api/app/demo", "", map[string]any{})
 	user := admin.fresh()
-	code, body := user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	code, body := user.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken, "pin": "1234"})
 	if code != 201 {
 		t.Fatalf("link: %d %v", code, body)
 	}
@@ -72,7 +72,7 @@ func TestFeedback(t *testing.T) {
 
 	// Someone else's thread does not exist for you, and non-admins cannot list them all.
 	other := admin.fresh()
-	other.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken})
+	other.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoStudentToken, "pin": "1234"})
 	if code, _ := other.do("GET", "/api/app/feedback/"+id, "", nil); code != 404 {
 		t.Fatalf("other user read the thread: %d", code)
 	}
@@ -92,7 +92,7 @@ func TestFeedbackFromParent(t *testing.T) {
 	admin := setupAdmins(t, zermelo.DemoSchool+":bkn")
 	admin.do("POST", "/api/app/demo", "", map[string]any{})
 	parent := admin.fresh()
-	code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken})
+	code, body := parent.do("POST", "/api/app/accounts", "", map[string]any{"school": "demo", "token": zermelo.DemoParentToken, "pin": "1234"})
 	if code != 201 {
 		t.Fatalf("link parent: %d %v", code, body)
 	}

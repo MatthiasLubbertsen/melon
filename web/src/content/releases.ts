@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarRange, CalendarX, Coffee, GraduationCap, Hourglass, Info, Layers, ListChecks, MessageSquareHeart, NotebookPen, Pencil, Search, Users, type LucideIcon } from 'lucide-react'
+import { CalendarClock, CalendarRange, CalendarX, Coffee, GraduationCap, Hourglass, Info, KeyRound, Layers, ListChecks, MessageSquareHeart, NotebookPen, Pencil, Search, Users, type LucideIcon } from 'lucide-react'
 
 export type Release = {
   /** Stable and unique: what a browser remembers as the last note it showed. */
@@ -16,6 +16,13 @@ export type Release = {
  * is worth telling people about; it shows once, after they next open Melon.
  */
 export const releases: Release[] = [
+  {
+    id: 'pin-at-signup',
+    date: '2026-11-26',
+    icon: KeyRound,
+    nl: 'Je kiest nu meteen een pincode bij het koppelen, zodat je overal kunt inloggen.',
+    en: 'You now pick a PIN when you link your school, so you can sign in anywhere.',
+  },
   {
     id: 'search-tests',
     date: '2026-11-26',

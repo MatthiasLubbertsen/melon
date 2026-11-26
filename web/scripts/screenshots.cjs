@@ -43,7 +43,8 @@ async function main() {
     console.log(`phone, ${theme}`)
     const { context, page, shot } = await session({ viewport: phone, theme })
     await page.goto(BASE)
-    await page.getByRole('button', { name: 'Koppelen' }).waitFor()
+    // A new profile picks its PIN while linking, so the form asks for one.
+    await page.locator('#new-pin').waitFor()
     await shot(`01-welcome-${theme}`)
 
     await page.getByRole('button', { name: 'Bekijk de demo' }).click()
@@ -227,6 +228,7 @@ async function main() {
     await page.goto(BASE)
     await page.locator('#school').fill('demo')
     await page.locator('#secret').fill('ouder')
+    await page.locator('#new-pin').fill('2468')
     await page.getByRole('button', { name: 'Koppelen' }).click()
     await page.locator('[data-status]:visible').first().waitFor()
     // Look a week ahead, then switch child: the day stays where it was.
@@ -380,6 +382,7 @@ async function main() {
     await page.goto(BASE)
     await page.locator('#school').fill('demo')
     await page.locator('#secret').fill('ouder')
+    await page.locator('#new-pin').fill('2468')
     await page.getByRole('button', { name: 'Koppelen' }).click()
     await page.locator('[data-status]:visible').first().waitFor()
     await page.goto(`${BASE}/admin`)
