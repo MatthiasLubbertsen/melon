@@ -14,7 +14,7 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, Chip, ConfirmDialog, CopyField } from '@/components/bits'
 import { LinkDialog } from '@/components/LinkForm'
-import { PinInput } from '@/components/SignInForm'
+import { PinForm } from '@/components/PinForm'
 import { api, type Account, type ApiKey, type Grant } from '@/lib/api'
 import { useI18n, type Lang } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -202,31 +202,14 @@ function AccountsTab() {
 
 /** Number + PIN: what turns this browser's profile into an account you can open anywhere. */
 function LoginSection() {
-  const { t, error } = useI18n()
-  const { session, accounts, reload, swap } = useSession()
+  const { t } = useI18n()
+  const { session, reload, swap } = useSession()
   const navigate = useNavigate()
   const login = session.login
   const [editing, setEditing] = useState(false)
-  const [accountId, setAccountId] = useState('')
-  const [pin, setPin] = useState('')
   const [removing, setRemoving] = useState(false)
   const [leaving, setLeaving] = useState(false)
 
-  const open = () => {
-    const current = login && accounts.find((a) => a.userCode === login.userId && a.school === login.school)
-    setAccountId((current || accounts[0]).id)
-    setPin('')
-    save.reset()
-    setEditing(true)
-  }
-  const save = useMutation({
-    mutationFn: () => api.setPin(accountId, pin),
-    onSuccess: async (l) => {
-      setEditing(false)
-      await reload()
-      toast.success(t('pinSaved', { number: l.userId }))
-    },
-  })
   const remove = useMutation({
     mutationFn: api.clearPin,
     onSuccess: async () => {
@@ -251,7 +234,7 @@ function LoginSection() {
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button variant={login ? 'outline' : 'default'} className="h-11" onClick={open}>
+        <Button variant={login ? 'outline' : 'default'} className="h-11" onClick={() => setEditing(true)}>
           <KeyRound />
           {login ? t('pinChange') : t('pinSet')}
         </Button>
@@ -270,43 +253,12 @@ function LoginSection() {
 
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent className="sm:max-w-md">
-          <form
-            className="grid gap-4"
-            onSubmit={(e) => {
-              e.preventDefault()
-              if (pin.length === 4 && !save.isPending) save.mutate()
-            }}
-          >
+          <PinForm onSaved={() => setEditing(false)}>
             <DialogHeader>
               <DialogTitle>{login ? t('pinChange') : t('pinSet')}</DialogTitle>
               <DialogDescription>{login ? t('pinChangeNote') : t('loginOff')}</DialogDescription>
             </DialogHeader>
-            {accounts.length > 1 && (
-              <fieldset className="grid gap-1">
-                <legend className="mb-1.5 text-sm font-medium">{t('loginAccount')}</legend>
-                {accounts.map((a) => (
-                  <Label key={a.id} className={cn('flex min-h-11 items-center gap-3 rounded-lg border px-3 font-normal has-focus-visible:ring-3 has-focus-visible:ring-ring/50', a.id === accountId && 'border-honeydew-ink/40 bg-honeydew-tint font-medium text-honeydew-ink')}>
-                    <input type="radio" name="login-account" className="sr-only" checked={a.id === accountId} onChange={() => setAccountId(a.id)} />
-                    <span className="truncate">{a.name}</span>
-                    <span className={cn('ml-auto shrink-0 font-mono text-sm', a.id !== accountId && 'text-muted-foreground')}>{a.userCode}</span>
-                  </Label>
-                ))}
-              </fieldset>
-            )}
-            <div className="grid gap-1.5">
-              <Label htmlFor="new-pin">{t('pin')}</Label>
-              <PinInput id="new-pin" value={pin} onChange={setPin} autoComplete="new-password" autoFocus aria-describedby="new-pin-hint" aria-invalid={save.isError} />
-              <p id="new-pin-hint" className={save.isError ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
-                {save.isError ? error(save.error) : t('pinHint')}
-              </p>
-            </div>
-            <DialogFooter>
-              <Button type="submit" className="h-11" disabled={pin.length !== 4 || save.isPending}>
-                {save.isPending && <Loader2 className="animate-spin" />}
-                {t('save')}
-              </Button>
-            </DialogFooter>
-          </form>
+          </PinForm>
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={removing} onOpenChange={setRemoving} title={t('loginRemoveTitle')} text={t('loginRemoveText')} confirmLabel={t('loginRemove')} busy={remove.isPending} onConfirm={() => remove.mutate()} />

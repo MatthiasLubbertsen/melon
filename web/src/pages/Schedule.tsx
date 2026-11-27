@@ -17,6 +17,7 @@ import { PeopleSearch } from '@/components/PeopleSearch'
 import { ScheduleSearch, type SearchAction } from '@/components/ScheduleSearch'
 import { api, type Detention, type Lesson, type Person } from '@/lib/api'
 import { addDays, defaultDay, formatDay, formatTime, isoWeek, monday, today, weekNumber } from '@/lib/dates'
+import { PinPrompt } from '@/components/PinPrompt'
 import { useNow, usePullToRefresh } from '@/lib/hooks'
 import { useI18n } from '@/lib/i18n'
 import { useSession } from '@/lib/session'
@@ -660,6 +661,8 @@ export function Schedule() {
         </div>
       )}
       <LinkDialog open={relinking} onOpenChange={setRelinking} initialSchool={account.school} />
+      {/* Not over a lesson opened from a link; it asks once that is closed. */}
+      <PinPrompt ready={!!query.data && !openLesson} />
     </div>
   )
 }
